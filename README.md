@@ -13,6 +13,10 @@ It uses a speed optimized ILI9341 driver for AVR which implements graphics drawi
 * BME280 digital humidity, pressure and temperature sensor
 * ILI9341 driver for 240x320 TFT LCD module
 
+### Schematic
+
+![](schematic/base.png)
+
 ### Prototype
 
 ![](media/base_station.jpg)
@@ -31,10 +35,10 @@ Remote temperature sensor module with drivers for AM2320 and DS18B20 sensor. The
 
 ### Schematic
 
-AM2320
+AM2320 wiring:
 ![](schematic/remote_25_45_85.png)
 
-DS18B20
+DS18B20 wiring:
 ![](schematic/remote_25_45_85-1wire.png)
 
 ### Prototype
@@ -55,10 +59,10 @@ Remote temperature sensor module with drivers for AM2320 and DS18B20 sensor. The
 
 ### Schematic
 
-AM2320
+AM2320 wiring:
 ![](schematic/remote_2313_4313.png)
 
-DS18B20
+DS18B20 wiring:
 ![](schematic/remote_2313_4313-1wire.png)
  
 ### Prototype
@@ -66,4 +70,16 @@ DS18B20
 ![](media/remote_2313_4313.jpg)
 
 ## Firmware
-The firmware has been developed in Atmel Studio 7 using GCC C and can be uploaded to the ATmega328P using the ISP connector and an ISP programmer such as [USBasp tool](http://www.fischl.de/usbasp/) using [avrdude](http://www.nongnu.org/avrdude/).
+The firmware has been developed in Atmel Studio 7 using GCC C and can be uploaded to the AVR using the ISP connector and an ISP programmer such as [USBasp tool](http://www.fischl.de/usbasp/) using [avrdude](http://www.nongnu.org/avrdude/).
+
+### Base
+
+`avrdude -p m328p -c usbasp -U flash:w:base.hex:i -U lfuse:w:0x62:m -U hfuse:w:0xdf:m`
+
+### Remote ATtiny2313/2313A/4313
+
+`avrdude -p t2313 -c usbasp -U flash:w:remote_2313_4313.hex:i -U lfuse:w:0x7f:m -U hfuse:w:0xdf:m`
+
+### Remote ATtiny25/45/85
+
+`avrdude -p t85 -c usbasp -U flash:w:remote_25_45_85.hex:i -U lfuse:w:0x62:m -U hfuse:w:0xdf:m`
