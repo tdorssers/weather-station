@@ -36,9 +36,11 @@ Remote temperature sensor module with drivers for AM2320 and DS18B20 sensor. The
 ### Schematic
 
 AM2320 wiring:
+
 ![](schematic/remote_25_45_85.png)
 
 DS18B20 wiring:
+
 ![](schematic/remote_25_45_85-1wire.png)
 
 ### Prototype
@@ -60,9 +62,11 @@ Remote temperature sensor module with drivers for AM2320 and DS18B20 sensor. The
 ### Schematic
 
 AM2320 wiring:
+
 ![](schematic/remote_2313_4313.png)
 
 DS18B20 wiring:
+
 ![](schematic/remote_2313_4313-1wire.png)
  
 ### Prototype
