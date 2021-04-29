@@ -52,22 +52,37 @@ typedef struct {
 } packet_t;
 
 typedef struct {
+	uint16_t min_humid, max_humid;
+	int16_t min_temp, max_temp;
+} history_t;
+
+typedef struct {
 	status_t status;
 	uint8_t timestamp;
 	unit_t unit;
 	uint16_t humid;
 	int16_t temp;
-	uint16_t min_humid;
-	uint16_t max_humid;
-	int16_t min_temp;
-	int16_t max_temp;
+	history_t hist[4];
 } sensor_t;
+
+typedef struct {
+	int16_t min_temp, max_temp;
+	uint32_t min_humid, max_humid;
+} bmehist_t;
+
+typedef struct {
+	int16_t temp;
+	uint32_t humid;
+	bmehist_t hist[4];
+} bmesensor_t;
 
 packet_t rxData;
 sensor_t remote[16];
+bmesensor_t local;
+uint8_t period = 0, max_period = 1;
 
 volatile uint8_t sec=0, min=0, hour=0;
-volatile bool takeSample=false, update=true, clearHist=true;
+volatile bool takeSample=false, update=true, advance=false;
 
 volatile uint16_t timer2_millis;
 
@@ -111,10 +126,10 @@ ISR(TIMER1_COMPA_vect){
 	if (min==60) {
 		hour++;
 		min=0;
+		if (hour % 6 == 0) advance=true;
 	}
 	if (hour==24) {
 		hour=0;
-		clearHist=true;
 	}
 	update=true;
 }
@@ -148,6 +163,22 @@ static void timer0_init(void) {
 	TCCR0B = _BV(CS01); /* Timer clock = I/O clock/8 */
 	OCR0B = 0xAB; /* 66% duty cycle */
 	DDRD |= _BV(PD5); /* Set OC0B pin as output */
+}
+
+// Initialize ADC
+static void init_adc(void) {
+	// AVCC with external capacitor at AREF pin and ADC Left Adjust Result
+	ADMUX = _BV(ADLAR) | _BV(REFS0);
+	// ADC prescaler of 128 and enable ADC
+	ADCSRA = _BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0) | _BV(ADEN);
+}
+
+// Read single conversion from given ADC channel
+uint8_t read_adc(uint8_t ch) {
+	ADMUX = (ADMUX & 0xf0) | (ch & 0x0f);	// select channel
+	ADCSRA |= _BV(ADSC);					// start conversion
+	while (ADCSRA & _BV(ADSC));				// wait until conversion complete
+	return ADCH;
 }
 
 // Convert (scaled) integer to (zero filled) string
@@ -279,58 +310,72 @@ static void drawSymbol(uint8_t c) {
 	ili9341_setFont(Arial_bold_14);
 }
 
-static void drawScreen(void) {
-	static int16_t min_t, max_t;
-	static uint32_t min_h, max_h;
-	int16_t t;
-	uint32_t p, h;
-
-	bme280_get_sensor_data(&t, &p, &h);
-	// erase data every 24 hours
-	if (clearHist) {
-		clearHist = false;
-		max_h = 0;
-		max_t = -4000;
-		min_h = 102400;
-		min_t = 8500;
-		for (uint8_t i=0; i<15; i++) {
-			remote[i].max_humid = 0;
-			remote[i].max_temp = -400;
-			remote[i].min_humid = 999;
-			remote[i].min_temp = 1250;
-		}
+// initialize array for current period
+static void init_period(void) {
+	for (uint8_t i = 0; i < 15; i++) {
+		remote[i].hist[period].max_humid = 0;
+		remote[i].hist[period].max_temp = -400;
+		remote[i].hist[period].min_humid = 999;
+		remote[i].hist[period].min_temp = 1250;
 	}
+	local.hist[period].max_humid = 0;
+	local.hist[period].max_temp = -4000;
+	local.hist[period].min_humid = 102400;
+	local.hist[period].min_temp = 8500;
+}
+
+static void drawScreen(void) {
+	int16_t temp;
+	uint32_t pres, humid;
+	history_t remote_day;
+	bmehist_t local_day;
+
+	// every 6 hours
+	if (advance) {
+		advance = false;
+		period = (period + 1) % 4;
+		if (max_period < 4) max_period++;
+		init_period();
+	}
+	bme280_get_sensor_data(&temp, &pres, &humid);
 	// calculate minimum and maximum values
-	if (h > max_h) max_h = h;
-	if (h < min_h) min_h = h;
-	if (t > max_t) max_t = t;
-	if (t < min_t) min_t = t;
+	if (humid > local.hist[period].max_humid) local.hist[period].max_humid = humid;
+	if (humid < local.hist[period].min_humid) local.hist[period].min_humid = humid;
+	if (temp > local.hist[period].max_temp) local.hist[period].max_temp = temp;
+	if (temp < local.hist[period].min_temp) local.hist[period].min_temp = temp;
+	memcpy(&local_day, &local.hist[0], sizeof(bmehist_t));
+	for (uint8_t j = 1; j < max_period; j++) {
+		if (local.hist[j].max_humid > local_day.max_humid) local_day.max_humid = local.hist[j].max_humid;
+		if (local.hist[j].min_humid < local_day.min_humid) local_day.min_humid = local.hist[j].min_humid;
+		if (local.hist[j].max_temp > local_day.max_temp) local_day.max_temp = local.hist[j].max_temp;
+		if (local.hist[j].min_temp < local_day.min_temp) local_day.min_temp = local.hist[j].min_temp;
+	}
 	// show base station sensor readings
 	ili9341_setFont(lcdnums14x24);
 	ili9341_setTextColor(ILI9341_RED,ILI9341_BLACK);
-	drawScaledLeft(201,15,84,t/10);
+	drawScaledLeft(201,15,84,temp/10);
 	ili9341_setTextColor(ILI9341_BLUE,ILI9341_BLACK);
-	drawScaledLeft(201,40,84,h*10/1024);
+	drawScaledLeft(201,40,84,humid*10/1024);
 	ili9341_setTextColor(ILI9341_WHITE,ILI9341_BLACK);
-	drawScaledLeft(201,65,84,p/10);
+	drawScaledLeft(201,65,84,pres/10);
 	ili9341_setFont(Arial_bold_14);
 	// show minimum
 	ili9341_setCursor(208,170);
 	drawSymbol(25);
-	drawScaled(min_t/10);
+	drawScaled(local_day.min_temp/10);
 	ili9341_puts_p(PSTR("C "));
-	drawScaled(min_h*10/1024);
+	drawScaled(local_day.min_humid*10/1024);
 	ili9341_write('%');
 	ili9341_clearTextArea(319);
 	// show maximum
 	ili9341_setCursor(208,186);
 	drawSymbol(24);
-	drawScaled(max_t/10);
+	drawScaled(local_day.max_temp/10);
 	ili9341_puts_p(PSTR("C "));
-	drawScaled(max_h*10/1024);
+	drawScaled(local_day.max_humid*10/1024);
 	ili9341_write('%');
 	ili9341_clearTextArea(319);
-	// show history age
+	// show wall clock
 	ili9341_setCursor(208,216);
 	i_to_a(hour, buffer, 0, 2);
 	buffer[2]=':';
@@ -342,7 +387,7 @@ static void drawScreen(void) {
 	// forecast
 	if (takeSample) {
 		takeSample=false;
-		uint8_t ws = sample(p);
+		uint8_t ws = sample(pres);
 		PGM_P ptr;
 		memcpy_P(&ptr, &icons[ws], sizeof(PGM_P));
 		ili9341_drawXBitmap(208,90,ptr,64,64,ILI9341_WHITE, ILI9341_BLACK);
@@ -362,10 +407,17 @@ static void drawScreen(void) {
 		if (remote[i].status == DISABLED) continue;
 		if ((sec + ((remote[i].timestamp > sec) ? 60 : 0)) - remote[i].timestamp > 9) remote[i].status = IDLE;
 		// calculate minimum and maximum values
-		if (remote[i].humid > remote[i].max_humid) remote[i].max_humid = remote[i].humid;
-		if (remote[i].humid < remote[i].min_humid) remote[i].min_humid = remote[i].humid;
-		if (remote[i].temp > remote[i].max_temp) remote[i].max_temp = remote[i].temp;
-		if (remote[i].temp < remote[i].min_temp) remote[i].min_temp = remote[i].temp;
+		if (remote[i].humid > remote[i].hist[period].max_humid) remote[i].hist[period].max_humid = remote[i].humid;
+		if (remote[i].humid < remote[i].hist[period].min_humid) remote[i].hist[period].min_humid = remote[i].humid;
+		if (remote[i].temp > remote[i].hist[period].max_temp) remote[i].hist[period].max_temp = remote[i].temp;
+		if (remote[i].temp < remote[i].hist[period].min_temp) remote[i].hist[period].min_temp = remote[i].temp;
+		memcpy(&remote_day, &remote[i].hist[0], sizeof(history_t));
+		for (uint8_t j = 1; j < max_period; j++) {
+			if (remote[i].hist[j].max_humid > remote_day.max_humid) remote_day.max_humid = remote[i].hist[j].max_humid;
+			if (remote[i].hist[j].min_humid < remote_day.min_humid) remote_day.min_humid = remote[i].hist[j].min_humid;
+			if (remote[i].hist[j].max_temp > remote_day.max_temp) remote_day.max_temp = remote[i].hist[j].max_temp;
+			if (remote[i].hist[j].min_temp < remote_day.min_temp) remote_day.min_temp = remote[i].hist[j].min_temp;
+		}
 		// show unit number and status
 		ili9341_fillCircle(6,y+22,5,(remote[i].status == IDLE) ? ILI9341_RED : ILI9341_LIME);
 		ili9341_setCursor(1,y);
@@ -375,43 +427,48 @@ static void drawScreen(void) {
 		ili9341_write(' ');
 		if (remote[i].unit.result == NO_RESPONSE) {
 			ili9341_puts_p(PSTR("No response"));
-			continue;
+			ili9341_clearTextArea(189);
+			ili9341_fillrect(12,y+15,177,14,ILI9341_BLACK);
+			y += 17;
 		} else if (remote[i].unit.result == CRC_ERROR) {
 			ili9341_puts_p(PSTR("CRC error"));
-			continue;
-		}
-		// show current temperature
-		ili9341_setFont(lcdnums12x16);
-		drawScaledLeft(18,y,60,remote[i].temp);
-		drawSymbol(9);
-		ili9341_write('C');
-		ili9341_setCursor(99,y);
-		// show minimum
-		drawSymbol(25);
-		drawScaled(remote[i].min_temp);
-		ili9341_puts_p(PSTR("C "));
-		if (remote[i].unit.type == AM2320) {
-			drawScaled(remote[i].min_humid);
-			ili9341_write('%');
-		}
-		ili9341_clearTextArea(189);
-		// show maximum
-		ili9341_setCursor(99,y+15);
-		drawSymbol(24);
-		drawScaled(remote[i].max_temp);
-		ili9341_puts_p(PSTR("C "));
-		if (remote[i].unit.type == AM2320) {
-			drawScaled(remote[i].max_humid);
-			ili9341_write('%');
-		}
-		ili9341_clearTextArea(189);
-		y += 17;
-		// show current humidity
-		if (remote[i].unit.type == AM2320) {
+			ili9341_clearTextArea(189);
+			ili9341_fillrect(12,y+15,177,14,ILI9341_BLACK);
+			y += 17;
+		} else {
+			// show current temperature
 			ili9341_setFont(lcdnums12x16);
-			drawScaledLeft(18,y,60,remote[i].humid);
-			ili9341_setFont(Arial_bold_14);
-			ili9341_write('%');
+			drawScaledLeft(18,y,60,remote[i].temp);
+			drawSymbol(9);
+			ili9341_write('C');
+			ili9341_setCursor(99,y);
+			// show minimum
+			drawSymbol(25);
+			drawScaled(remote_day.min_temp);
+			ili9341_puts_p(PSTR("C "));
+			if (remote[i].unit.type == AM2320) {
+				drawScaled(remote_day.min_humid);
+				ili9341_write('%');
+			}
+			ili9341_clearTextArea(189);
+			// show maximum
+			ili9341_setCursor(99,y+15);
+			drawSymbol(24);
+			drawScaled(remote_day.max_temp);
+			ili9341_puts_p(PSTR("C "));
+			if (remote[i].unit.type == AM2320) {
+				drawScaled(remote_day.max_humid);
+				ili9341_write('%');
+			}
+			ili9341_clearTextArea(189);
+			y += 17;
+			// show current humidity
+			if (remote[i].unit.type == AM2320) {
+				ili9341_setFont(lcdnums12x16);
+				drawScaledLeft(18,y,60,remote[i].humid);
+				ili9341_setFont(Arial_bold_14);
+				ili9341_write('%');
+			}
 		}
 		y += 17;
 		// show separator
@@ -424,7 +481,6 @@ static void drawScreen(void) {
 int main(void) {
 	uint8_t length = 0xff, prev, c = 0;
 	uint16_t crc = 0, signal_color = ILI9341_DARKGREY;
-	
 	ili9341_init();
 	ili9341_setRotation(3);
 	ili9341_fillScreen(ILI9341_BLACK);
@@ -453,12 +509,15 @@ int main(void) {
 	ili9341_write('%');
 	ili9341_setCursor(285,65);
 	ili9341_puts_p(PSTR("hPa"));
+	init_adc();
+	init_period();
 	
 	// Main loop
 	while (1) {
 		if (update) {
 			update = false;
 			uint16_t start = millis();
+			OCR0B = ~read_adc(2); // adjust back light
 			drawScreen();
 			ili9341_drawXBitmap(288,114,signal_icon,20,16,signal_color, ILI9341_BLACK);
 			signal_color = ILI9341_DARKGREY;
