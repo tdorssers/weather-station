@@ -2,7 +2,7 @@
 
 ## Base
 
-A barometric sensor is used to implement a simple weather forecasting algorithm by calculating Pa/h. Up to 16 remote AM2320 or DS18B20 sensors can transmit NRZ encoded packets with CRC data using 433MHz ASK/OOK modules connected to the hardware USART at 1200 baud. Minimum and maximum temperatures and humidities are stored over a 24 hour period.
+A barometric sensor is used to implement a simple weather forecasting algorithm by calculating Pa/h. Up to 16 remote AM2320 or DS18B20 sensors can transmit NRZ encoded packets with CRC data using 433MHz ASK/OOK modules connected to the hardware USART at 1200 baud. Up to 6 remote sensors are shown. Minimum and maximum temperatures and humidity values are stored in 4 six hour periods. The LCD back light level is auto adjusted using the LDR. A software UART implementation using Timer1 is interfacing with the GPS module at 9600 baud. Libc timekeeping uses the position to determine day and night display mode.
 
 It uses a speed optimized ILI9341 driver for AVR which implements graphics drawing primitives and uses openGLCD library fonts.
 
@@ -12,6 +12,8 @@ It uses a speed optimized ILI9341 driver for AVR which implements graphics drawi
 * RFM210LCF 433MHz ASK/OOK receiver module
 * BME280 digital humidity, pressure and temperature sensor
 * ILI9341 driver for 240x320 TFT LCD module
+* NEO-6M GPS module
+* GL5528 LDR
 
 ### Schematic
 
@@ -19,7 +21,13 @@ It uses a speed optimized ILI9341 driver for AVR which implements graphics drawi
 
 ### Prototype
 
-![](media/base_station.jpg)
+Day time display mode:
+
+![](media/base_station_day.jpg)
+
+Night time display mode:
+
+![](media/base_station_night.jpg)
 
 ## Remote ATtiny25/45/85
 

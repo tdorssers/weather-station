@@ -7,12 +7,12 @@
  * Speed optimized ILI9341 driver for AVR
  * Implements graphics drawing primitives and openGLCD library fonts
  *
- * PB0 -> DC
- * PB1 -> CS
  * PB3 -> MOSI
  * PB4 -> MISO
  * PB5 -> SCK
- * PD7 -> RST
+ * PD6 -> DC
+ * PD7 -> CS
+ * PD4 -> RST
  */ 
 
 #define F_CPU 8000000
@@ -57,8 +57,8 @@ static const uint8_t init_commands[] PROGMEM = {
 
 #define FAST_SPI // Enable fast SPI writing optimizations for Fck/2 double speed mode
 
-#define spi_begin() PORTB &= ~_BV(PB1) // CS low
-#define spi_end() PORTB |= _BV(PB1) // CS high
+#define spi_begin() PORTD &= ~_BV(PD7) // CS low
+#define spi_end() PORTD |= _BV(PD7) // CS high
 
 // Send 8 bit value
 inline void spiwrite(uint8_t data) {
@@ -165,19 +165,19 @@ inline uint8_t spiread(void) {
 
 // Send command and deselect
 void writecommand(uint8_t com) {
-	PORTB &= ~_BV(PB0); // set DC low to send command
+	PORTD &= ~_BV(PD6); // set DC low to send command
 	spi_begin();
 	spiwrite(com);
-	PORTB |= _BV(PB0); // set DC high for data
+	PORTD |= _BV(PD6); // set DC high for data
 	spi_end();
 }
 
 // Send command
 inline void writecommand_cont(uint8_t com) {
-	PORTB &= ~_BV(PB0); // set DC low to send command
+	PORTD &= ~_BV(PD6); // set DC low to send command
 	spi_begin();
 	spiwrite(com);
-	PORTB |= _BV(PB0); // set DC high for data
+	PORTD |= _BV(PD6); // set DC high for data
 }
 
 // Send 8 bit data and deselect
@@ -209,18 +209,17 @@ static uint8_t read8_cont(void) {
 
 // Initialize
 void ili9341_init(void) {
-	DDRD |= _BV(PD7); // RST as output
-	PORTD |= _BV(PD7); // set high for normal operation
-	DDRB |= _BV(PB0) | _BV(PB1); // DC and CS as output
+	PORTD |= _BV(PD4); // set RST high for normal operation
+	DDRD |= _BV(PD4) | _BV(PD6) | _BV(PD7); // RST, DC and CS as output
 	// Initialize SPI
 	DDRB |= _BV(PB2) | _BV(PB3) | _BV(PB5); // SS, MOSI and SCK as output
 	SPCR = _BV(SPE) | _BV(MSTR); // Mode 0, fOsc/4
 	SPSR |= _BV(SPI2X); // Double clock rate
-	PORTB |= _BV(PB1); // CS low during startup
+	PORTD |= _BV(PD7); // CS low during startup
 	// Hardware reset
-	PORTD &= ~_BV(PD7);
+	PORTD &= ~_BV(PD4);
 	_delay_ms(5);
-	PORTD |= _BV(PD7);
+	PORTD |= _BV(PD4);
 	_delay_ms(120);
 	// Soft reset
 	writecommand(ILI9341_SWRESET);
@@ -405,9 +404,9 @@ void ili9341_drawLine(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint16
 
 void ili9341_drawRect(uint16_t x0, uint16_t y0, uint16_t width, uint16_t height, uint16_t color) {
 	ili9341_drawhline(x0, y0, width, color);
-	ili9341_drawhline(x0, y0+height, width, color);
+	ili9341_drawhline(x0, y0+height-1, width, color);
 	ili9341_drawvline(x0, y0, height, color);
-	ili9341_drawvline(x0+width, y0, height, color);
+	ili9341_drawvline(x0+width-1, y0, height, color);
 }
 
 void ili9341_drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color) {

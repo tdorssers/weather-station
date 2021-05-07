@@ -2,7 +2,8 @@
  * Title   : Weather station
  * Hardware: ATmega328P @ 8 MHz, RFM210LCF 433MHz ASK/OOK receiver module,
  *           BME280 digital humidity, pressure and temperature sensor,
- *           ILI9341 driver for 240x320 TFT LCD module
+ *           ILI9341 driver for 240x320 TFT LCD module, GL5528 LDR,
+ *           NEO-6M GPS module
  *
  * Created: 14-12-2019 19:43:50
  * Author : Tim Dorssers
@@ -10,26 +11,32 @@
  * A barometric sensor is used to implement a simple weather forecasting
  * algorithm by calculating Pa/h. Up to 16 remote AM2320 or DS18B20 sensors can
  * transmit NRZ encoded packets with CRC data using 433MHz ASK/OOK modules
- * connected to the hardware UART at 1200 baud. Minimum and maximum
- * temperatures and humidities are stored over a 24 hour period.
- */ 
+ * connected to the hardware UART at 1200 baud. Up to 6 remote sensors are
+ * shown. Minimum and maximum temperatures and humidity values are stored in 4
+ * six hour periods. The LCD back light level is auto adjusted using the LDR.
+ * A software UART implementation using Timer1 is interfacing with the GPS
+ * module at 9600 baud. Libc timekeeping uses the position to determine day and
+ * night display mode.
+ */
 
 #define F_CPU 8000000
 
 #include <avr/io.h>
 #include <avr/pgmspace.h>
 #include <avr/interrupt.h>
-#include <util/atomic.h>
 #include <util/crc16.h>
 #include <util/delay.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "ili9341.h"
 #include "bme280.h"
 #include "uart.h"
 #include "weatherIcons.h"
+#include "suart.h"
+#include "gps.h"
 
-char buffer[20];
+char buffer[26];
 
 typedef enum {OK, NO_RESPONSE, CRC_ERROR} result_t;
 typedef enum {DS18B20, AM2320} type_t;
@@ -81,10 +88,20 @@ sensor_t remote[16];
 bmesensor_t local;
 uint8_t period = 0, max_period = 1;
 
-volatile uint8_t sec=0, min=0, hour=0;
-volatile bool takeSample=false, update=true, advance=false;
+typedef union {
+	struct {
+		uint8_t update_screen:1;
+		uint8_t take_sample:1;
+		uint8_t advance_period:1;
+	};
+	uint8_t all;
+} action_t;
 
-volatile uint16_t timer2_millis;
+volatile action_t action;
+volatile uint8_t sec=0;
+volatile uint16_t msec=0, min=0;
+
+uint16_t fgcolor = ILI9341_WHITE, bgcolor = ILI9341_BLACK;
 
 const char signal_icon[] PROGMEM = {
 	0x80, 0x1F, 0x00, 0xF0, 0xFF, 0x01, 0x7C, 0xC0, 0x03, 0x1E, 0x00, 0x0F,
@@ -106,53 +123,30 @@ const char PROGMEM weather4[]="thunderstorm";
 const char PROGMEM weather5[]="unknown";
 PGM_P const PROGMEM forecast[6]={weather0,weather1,weather2,weather3,weather4,weather5};
 
-// Generate a 1s clock signal as interrupt
-static void timer1_init(void) {
-	TCCR1A=(0<<COM1B1)|(0<<COM1B0)|(0<<WGM11); // CTC mode and top in OCR1A
-	TCCR1B=(1<<CS12)|(1<<CS10)|(1<<WGM12)|(0<<WGM13); // crystal clock/1024
-	// divide crystal clock: Since we count from zero we have to subtract one.
-	OCR1AH = ((F_CPU / 1024) >> 8) & 0x00FF;
-	OCR1AL = ((F_CPU / 1024) & 0x00FF) - 1;
-	TIMSK1 = (1 << OCIE1A); // interrupt mask bit
-}
-
-ISR(TIMER1_COMPA_vect){
-	sec++;
-	if (sec==60) {
-		min++;
-		sec=0;
-		takeSample=true;
-	}
-	if (min==60) {
-		hour++;
-		min=0;
-		if (hour % 6 == 0) advance=true;
-	}
-	if (hour==24) {
-		hour=0;
-	}
-	update=true;
-}
-
-// Count milliseconds
+// Time based event triggers
 ISR(TIMER2_COMPA_vect) {
-	timer2_millis++;
-}
-
-// Get current millis
-uint16_t millis(void) {
-	uint16_t ms;
-	
-	ATOMIC_BLOCK(ATOMIC_FORCEON) {
-		ms = timer2_millis;
+	msec++;
+	if (msec == 1000) {
+		msec = 0;
+		system_tick();
+		sec++;
+		action.update_screen = true;
+		if (sec == 60) {
+			sec = 0;
+			min++;
+			action.take_sample = true;
+			if (min == 360) {
+				min = 0;
+				action.advance_period = true;
+			}
+		}
 	}
-	return ms;
 }
 
 // Initialize 1 millisecond timer
 static void timer2_init() {
 	TCCR2A = _BV(WGM21);
-	TCCR2B = _BV(CS20) | _BV(CS21);
+	TCCR2B = _BV(CS22);
 	OCR2A = ((F_CPU / 1000) / 64) - 1;
 	TIMSK2 = _BV(OCIE2A);
 }
@@ -161,7 +155,7 @@ static void timer2_init() {
 static void timer0_init(void) {
 	TCCR0A = _BV(COM0B1) | _BV(WGM01) | _BV(WGM00); /* Enable non inverting 8-Bit PWM */
 	TCCR0B = _BV(CS01); /* Timer clock = I/O clock/8 */
-	OCR0B = 0xAB; /* 66% duty cycle */
+	//OCR0B = 0xAB; /* 66% duty cycle */
 	DDRD |= _BV(PD5); /* Set OC0B pin as output */
 }
 
@@ -174,11 +168,22 @@ static void init_adc(void) {
 }
 
 // Read single conversion from given ADC channel
-uint8_t read_adc(uint8_t ch) {
+static uint8_t read_adc(uint8_t ch) {
 	ADMUX = (ADMUX & 0xf0) | (ch & 0x0f);	// select channel
 	ADCSRA |= _BV(ADSC);					// start conversion
 	while (ADCSRA & _BV(ADSC));				// wait until conversion complete
 	return ADCH;
+}
+
+// Daylight Saving function for the European Union
+// From http://savannah.nongnu.org/bugs/?44327
+static int eu_dst(const time_t *timer, int32_t *z)
+{
+	uint32_t t = *timer;
+	if ((uint8_t)(t >> 24) >= 194) t -= 3029443200U;
+	t = (t + 655513200) / 604800 * 28;
+	if ((uint16_t)(t % 1461) < 856) return 3600;
+	else return 0;
 }
 
 // Convert (scaled) integer to (zero filled) string
@@ -299,7 +304,7 @@ static void drawScaled(int16_t value) {
 static void drawScaledLeft(uint16_t x, uint16_t y, uint16_t w, int16_t value) {
 	i_to_a(value, buffer, 1, 3);
 	uint8_t sw = ili9341_strWidth(buffer);
-	ili9341_setCursor(x+w-sw,y);
+	ili9341_setCursor(x + w - sw, y);
 	ili9341_clearTextArea(x);
 	ili9341_puts(buffer);
 }
@@ -324,15 +329,49 @@ static void init_period(void) {
 	local.hist[period].min_temp = 8500;
 }
 
+static void drawTime(const time_t *timer) {
+	struct tm *timeptr;
+	
+	timeptr = localtime(timer);
+	i_to_a(timeptr->tm_hour, buffer, 0, 2);
+	buffer[2] = ':';
+	i_to_a(timeptr->tm_min, &buffer[3], 0, 2);
+	buffer[5] = ':';
+	i_to_a(timeptr->tm_sec, &buffer[6], 0, 2);
+	ili9341_puts(buffer);
+}
+
 static void drawScreen(void) {
+	ili9341_fillScreen(bgcolor);
+	ili9341_setFont(Arial_bold_14);
+	ili9341_drawRect(0,0,190,224,ILI9341_GRAY);
+	ili9341_setCursor(1,0);
+	ili9341_setTextColor(fgcolor, ILI9341_GRAY);
+	ili9341_puts_p(PSTR("Remote stations"));
+	ili9341_clearTextArea(189);
+	ili9341_drawRect(200,0,120,224,ILI9341_GRAY);
+	ili9341_setCursor(201,0);
+	ili9341_puts_p(PSTR("Base station"));
+	ili9341_clearTextArea(319);
+	ili9341_setTextColor(fgcolor, bgcolor);
+	ili9341_setCursor(285,15);
+	drawSymbol(9);
+	ili9341_write('C');
+	ili9341_setCursor(285,40);
+	ili9341_write('%');
+	ili9341_setCursor(285,65);
+	ili9341_puts_p(PSTR("hPa"));
+}
+
+static void updateScreen(void) {
 	int16_t temp;
 	uint32_t pres, humid;
 	history_t remote_day;
 	bmehist_t local_day;
-
+	time_t now;
+	
 	// every 6 hours
-	if (advance) {
-		advance = false;
+	if (action.advance_period) {
 		period = (period + 1) % 4;
 		if (max_period < 4) max_period++;
 		init_period();
@@ -350,17 +389,62 @@ static void drawScreen(void) {
 		if (local.hist[j].max_temp > local_day.max_temp) local_day.max_temp = local.hist[j].max_temp;
 		if (local.hist[j].min_temp < local_day.min_temp) local_day.min_temp = local.hist[j].min_temp;
 	}
+	// forecast
+	time(&now);
+	if (action.take_sample) {
+		uint8_t ws = sample(pres);
+		// determine day/night mode
+		time_t noon = solar_noon(&now);
+		int32_t half = daylight_seconds(&now) / 2;
+		time_t sunset = noon + half;
+		time_t sunrise = noon - half;
+		if (now >= sunrise && now < sunset) {
+			if (fgcolor != ILI9341_BLACK) {
+				fgcolor = ILI9341_BLACK;
+				bgcolor = ILI9341_WHITE;
+				drawScreen();
+			}
+			ili9341_setCursor(193,225);
+			drawSymbol(15);
+			drawSymbol(25);
+			drawTime(&sunset);
+		} else {
+			if (fgcolor != ILI9341_WHITE) {
+				fgcolor = ILI9341_WHITE;
+				bgcolor = ILI9341_BLACK;
+				drawScreen();
+			}
+			ili9341_setCursor(193,225);
+			drawSymbol(15);
+			drawSymbol(24);
+			drawTime(&sunrise);
+		}
+		ili9341_clearTextArea(265);
+		// show forecast
+		PGM_P ptr;
+		memcpy_P(&ptr, &icons[ws], sizeof(PGM_P));
+		ili9341_drawXBitmap(208,90,ptr,64,64,fgcolor, bgcolor);
+		memcpy_P(&ptr, &forecast[ws], sizeof(PGM_P));
+		ili9341_setCursor(201,154);
+		ili9341_puts_p(ptr);
+		ili9341_clearTextArea(319);
+		ili9341_setCursor(201,200);
+		i_to_a(dP_dt/10, buffer, 1, 3);
+		ili9341_puts(buffer);
+		ili9341_puts_p(PSTR(" hPa/hr"));
+		ili9341_clearTextArea(319);
+	}
 	// show base station sensor readings
 	ili9341_setFont(lcdnums14x24);
-	ili9341_setTextColor(ILI9341_RED,ILI9341_BLACK);
+	ili9341_setTextColor(ILI9341_RED,bgcolor);
 	drawScaledLeft(201,15,84,temp/10);
-	ili9341_setTextColor(ILI9341_BLUE,ILI9341_BLACK);
+	ili9341_setTextColor(ILI9341_BLUE,bgcolor);
 	drawScaledLeft(201,40,84,humid*10/1024);
-	ili9341_setTextColor(ILI9341_WHITE,ILI9341_BLACK);
+	ili9341_setTextColor(fgcolor,bgcolor);
 	drawScaledLeft(201,65,84,pres/10);
 	ili9341_setFont(Arial_bold_14);
 	// show minimum
-	ili9341_setCursor(208,170);
+	ili9341_setCursor(201,170);
 	drawSymbol(25);
 	drawScaled(local_day.min_temp/10);
 	ili9341_puts_p(PSTR("C "));
@@ -368,39 +452,18 @@ static void drawScreen(void) {
 	ili9341_write('%');
 	ili9341_clearTextArea(319);
 	// show maximum
-	ili9341_setCursor(208,186);
+	ili9341_setCursor(201,186);
 	drawSymbol(24);
 	drawScaled(local_day.max_temp/10);
 	ili9341_puts_p(PSTR("C "));
 	drawScaled(local_day.max_humid*10/1024);
 	ili9341_write('%');
 	ili9341_clearTextArea(319);
-	// show wall clock
-	ili9341_setCursor(208,216);
-	i_to_a(hour, buffer, 0, 2);
-	buffer[2]=':';
-	i_to_a(min, &buffer[3], 0, 2);
-	buffer[5]=':';
-	i_to_a(sec, &buffer[6], 0, 2);
+	// show clock
+	ili9341_setCursor(1,225);
+	ctime_r(&now, buffer);
 	ili9341_puts(buffer);
-	ili9341_clearTextArea(265);
-	// forecast
-	if (takeSample) {
-		takeSample=false;
-		uint8_t ws = sample(pres);
-		PGM_P ptr;
-		memcpy_P(&ptr, &icons[ws], sizeof(PGM_P));
-		ili9341_drawXBitmap(208,90,ptr,64,64,ILI9341_WHITE, ILI9341_BLACK);
-		memcpy_P(&ptr, &forecast[ws], sizeof(PGM_P));
-		ili9341_setCursor(208,154);
-		ili9341_puts_p(ptr);
-		ili9341_clearTextArea(319);
-		ili9341_setCursor(208,200);
-		i_to_a(dP_dt/10, buffer, 1, 3);
-		ili9341_puts(buffer);
-		ili9341_puts_p(PSTR(" hPa/hr"));
-		ili9341_clearTextArea(319);
-	}
+	ili9341_clearTextArea(192);
 	// show remote sensor readings
 	uint16_t y = 15;
 	for (uint8_t i=0; i<15; i++) {
@@ -428,12 +491,12 @@ static void drawScreen(void) {
 		if (remote[i].unit.result == NO_RESPONSE) {
 			ili9341_puts_p(PSTR("No response"));
 			ili9341_clearTextArea(189);
-			ili9341_fillrect(12,y+15,177,14,ILI9341_BLACK);
+			ili9341_fillrect(12,y+15,177,14,bgcolor);
 			y += 17;
 		} else if (remote[i].unit.result == CRC_ERROR) {
 			ili9341_puts_p(PSTR("CRC error"));
 			ili9341_clearTextArea(189);
-			ili9341_fillrect(12,y+15,177,14,ILI9341_BLACK);
+			ili9341_fillrect(12,y+15,177,14,bgcolor);
 			y += 17;
 		} else {
 			// show current temperature
@@ -472,60 +535,48 @@ static void drawScreen(void) {
 		}
 		y += 17;
 		// show separator
-		ili9341_drawhline(0,y,189,ILI9341_LIGHTSKYBLUE);
+		ili9341_drawhline(0,y,189,ILI9341_GRAY);
 		y++;
-		if (y > 238) break;
+		if (y >= 224) break;
 	}
 }
 
 int main(void) {
 	uint8_t length = 0xff, prev, c = 0;
 	uint16_t crc = 0, signal_color = ILI9341_DARKGREY;
+	
+	timer0_init();
+	timer2_init();
 	ili9341_init();
 	ili9341_setRotation(3);
-	ili9341_fillScreen(ILI9341_BLACK);
-	timer0_init();
+	drawScreen();
 	bme280_init();
-	timer1_init();
-	timer2_init();
+	suart_init();
 	uart_init(UART_BAUD_SELECT(1200, F_CPU));
-	
-	ili9341_setFont(Arial_bold_14);
-	ili9341_drawRect(0,0,189,239,ILI9341_LIGHTSKYBLUE);
-	ili9341_setCursor(1,0);
-	ili9341_setTextColor(ILI9341_BLACK, ILI9341_LIGHTSKYBLUE);
-	ili9341_puts_p(PSTR("Remote stations"));
-	ili9341_clearTextArea(189);
-	ili9341_drawRect(200,0,119,239,ILI9341_CORAL);
-	ili9341_setCursor(201,0);
-	ili9341_setTextColor(ILI9341_BLACK, ILI9341_CORAL);
-	ili9341_puts_p(PSTR("Base station"));
-	ili9341_clearTextArea(319);
-	ili9341_setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-	ili9341_setCursor(285,15);
-	drawSymbol(9);
-	ili9341_write('C');
-	ili9341_setCursor(285,40);
-	ili9341_write('%');
-	ili9341_setCursor(285,65);
-	ili9341_puts_p(PSTR("hPa"));
 	init_adc();
 	init_period();
+	set_zone(1 * ONE_HOUR); // adjust time zone
+	set_dst(eu_dst);        // enable daylight saving time
 	
 	// Main loop
 	while (1) {
-		if (update) {
-			update = false;
-			uint16_t start = millis();
+		if (action.update_screen) {
 			OCR0B = ~read_adc(2); // adjust back light
-			drawScreen();
-			ili9341_drawXBitmap(288,114,signal_icon,20,16,signal_color, ILI9341_BLACK);
+			updateScreen();
+			action.all = false;
+			ili9341_drawXBitmap(288,114,signal_icon,20,16,signal_color, bgcolor);
 			signal_color = ILI9341_DARKGREY;
-			ili9341_setCursor(270,216);
-			i_to_a(millis() - start, buffer, 0, 0);
+			ili9341_setCursor(272,225);
+			i_to_a(msec, buffer, 0, 0);
 			ili9341_puts(buffer);
 			ili9341_puts_p(PSTR("ms"));
 			ili9341_clearTextArea(319);
+		}
+		if (suart_available()) {
+			if (decode(suart_getc())) {
+				set_system_time(mk_gmtime(&gps_time));
+				set_position(gps_latitude / 100, gps_longitude / 100);
+			}
 		}
 		if (uart_available()) {
 			prev = c;
