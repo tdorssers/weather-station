@@ -12,13 +12,7 @@
 #include "am2320.h"
 #include "i2cmaster.h"
 
-static uint16_t crc16(uint8_t *ptr, uint8_t length) {
-	uint16_t crc = 0xFFFF;
-	while (length--) crc = _crc16_update(crc, *ptr++);
-	return crc;
-}
-
-// Returns 0 for success, 1 for no response and 2 for crc error
+// Returns 0 for success, 1 for no response, 2 for crc error
 uint8_t am2320_get(uint16_t *humid, int16_t *temp) {
 	uint8_t buffer[8];
 	i2c_init();
@@ -35,12 +29,15 @@ uint8_t am2320_get(uint16_t *humid, int16_t *temp) {
 	// Host read back
 	_delay_us(1600);
 	i2c_start(AM2320_ADDR + I2C_READ);
-	for (uint8_t s = 0; s < 7; s++)
+	uint16_t crc = 0xFFFF;
+	for (uint8_t s = 0; s < 7; s++) {
 		buffer[s] = i2c_readAck();
+		if (s < 6) crc = _crc16_update(crc, buffer[s]);
+	}
 	buffer[7] = i2c_readNak();
 	i2c_stop();
 	// Check CRC
-	if (((buffer[7] << 8) | buffer[6]) != crc16(buffer, 6)) return 2;
+	if (((buffer[7] << 8) | buffer[6]) != crc) return 2;
 	*humid = (buffer[2] << 8) | buffer[3];
 	*temp = ((buffer[4] & 0x7F) << 8) | buffer[5];
 	// Check sign bit

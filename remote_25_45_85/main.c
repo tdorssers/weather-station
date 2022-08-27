@@ -1,14 +1,14 @@
 /*
  * Title   : Remote temperature sensor module
- * Hardware: ATtiny25/45/85 @ 1 MHz, RFM85 433MHz ASK/OOK transmitter module,
- *           AM2320 digital temperature and humidity sensor or DS18B20 digital
- *           temperature sensor, 1 tactile button
+ * Hardware: ATtiny45/85 @ 1 MHz, RFM85 433MHz ASK/OOK transmitter module,
+ *           AHT20/AM2320 digital temperature and humidity sensor or DS18B20
+ *           digital temperature sensor, 1 tactile button
  * Created : 12-12-2020 12:56:25
  * Author  : Tim Dorssers
  *
- * PB0 -> AM2320 SDA or DS18B20 DQ
+ * PB0 -> AHT20/AM2320 SDA or DS18B20 DQ
  * PB1 -> transmitter data
- * PB2 -> AM2320 SCL or N/C
+ * PB2 -> AHT20/AM2320 SCL or N/C
  * PB3 -> tactile button
  * PB4 -> transmitter Vcc
  */ 
@@ -27,6 +27,7 @@
 #include "usi_uart.h"
 #include "am2320.h"
 #include "ds18b20.h"
+#include "aht20.h"
 
 #undef DEBUG
 
@@ -92,6 +93,7 @@ int main(void) {
 	PORTB |= _BV(PB3);
 	GIMSK |= _BV(PCIE);
 	PCMSK |= _BV(PCINT3);
+	aht20_init();
 	// Enter main loop
 	while (1) {
 		txData.humid = 0xaaaa;
@@ -101,6 +103,10 @@ int main(void) {
 		if (result == 1) {
 			result = am2320_get(&txData.humid, &txData.temp);
 			type = 1;
+		}
+		if (result == 1) {
+			result = aht20_get(&txData.humid, &txData.temp);
+			type = 2;
 		}
 		txData.unit = type << 6 | result << 4 | id;
 		#ifdef DEBUG
