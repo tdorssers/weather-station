@@ -89,6 +89,8 @@ were adapted from the Arduino HardwareSerial.h library by Tim Sharpe on
  * constants and macros
  */
 
+//#define ENABLE_RX /**< USART0 defaults to transmit only, enable receive as required */
+
 /* Enable USART 1, 2, 3 as required */
 /* Can be defined in compiler symbol setup with -D option (preferred) */
 #ifndef USART0_ENABLED

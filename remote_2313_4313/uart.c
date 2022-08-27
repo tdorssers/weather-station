@@ -353,20 +353,26 @@ Date        Description
 #if defined(USART0_ENABLED)
 	#if defined(ATMEGA_USART) || defined(ATMEGA_USART0)
 		static volatile uint8_t UART_TxBuf[UART_TX0_BUFFER_SIZE];
-		static volatile uint8_t UART_RxBuf[UART_RX0_BUFFER_SIZE];
+		#if defined(ENABLE_RX)
+			static volatile uint8_t UART_RxBuf[UART_RX0_BUFFER_SIZE];
+		#endif
 		
 		#if defined(USART0_LARGE_BUFFER)
 			static volatile uint16_t UART_TxHead;
 			static volatile uint16_t UART_TxTail;
-			static volatile uint16_t UART_RxHead;
-			static volatile uint16_t UART_RxTail;
-			static volatile uint8_t UART_LastRxError;
+			#if defined(ENABLE_RX)
+				static volatile uint16_t UART_RxHead;
+				static volatile uint16_t UART_RxTail;
+				static volatile uint8_t UART_LastRxError;
+			#endif
 		#else
 			static volatile uint8_t UART_TxHead;
 			static volatile uint8_t UART_TxTail;
-			static volatile uint8_t UART_RxHead;
-			static volatile uint8_t UART_RxTail;
-			static volatile uint8_t UART_LastRxError;
+			#if defined(ENABLE_RX)
+				static volatile uint8_t UART_RxHead;
+				static volatile uint8_t UART_RxTail;
+				static volatile uint8_t UART_LastRxError;
+			#endif
 		#endif
 		
 	#endif
@@ -440,6 +446,8 @@ Date        Description
 
 #if defined(AT90_UART) || defined(ATMEGA_USART) || defined(ATMEGA_USART0)
 
+#if defined(ENABLE_RX)
+
 ISR(UART0_RECEIVE_INTERRUPT)
 /*************************************************************************
 Function: UART Receive Complete interrupt
@@ -481,6 +489,7 @@ Purpose:  called when the UART has received a character
     UART_LastRxError = lastRxError;   
 }
 
+#endif
 
 ISR(UART0_TRANSMIT_INTERRUPT)
 /*************************************************************************
@@ -514,16 +523,22 @@ void uart0_init(uint16_t baudrate)
 	ATOMIC_BLOCK(ATOMIC_FORCEON) {
 		UART_TxHead = 0;
 		UART_TxTail = 0;
+#if defined(ENABLE_RX)
 		UART_RxHead = 0;
 		UART_RxTail = 0;
+#endif
 	}
 	
 #if defined(AT90_UART)
 	/* set baud rate */
 	UBRR = (uint8_t) baudrate;
 
+#if defined(ENABLE_RX)
 	/* enable UART receiver and transmitter and receive complete interrupt */
 	UART0_CONTROL = _BV(RXCIE)|_BV(RXEN)|_BV(TXEN);
+#else
+	UART0_CONTROL = _BV(TXEN);
+#endif
 
 #elif defined (ATMEGA_USART)
 	/* Set baud rate */
@@ -534,8 +549,12 @@ void uart0_init(uint16_t baudrate)
 	UBRRH = (uint8_t) (baudrate>>8);
 	UBRRL = (uint8_t) baudrate;
 
+#if defined(ENABLE_RX)
 	/* Enable USART receiver and transmitter and receive complete interrupt */
 	UART0_CONTROL = _BV(RXCIE)|(1<<RXEN)|(1<<TXEN);
+#else
+	UART0_CONTROL = (1<<TXEN);
+#endif
 
 	/* Set frame format: asynchronous, 8data, no parity, 1stop bit */
 #ifdef URSEL
@@ -553,8 +572,12 @@ void uart0_init(uint16_t baudrate)
 	UBRR0H = (uint8_t)(baudrate>>8);
 	UBRR0L = (uint8_t) baudrate;
 
+#if defined(ENABLE_RX)
 	/* Enable USART receiver and transmitter and receive complete interrupt */
 	UART0_CONTROL = _BV(RXCIE0)|(1<<RXEN0)|(1<<TXEN0);
+#else
+	UART0_CONTROL = (1<<TXEN0);
+#endif
 
 	/* Set frame format: asynchronous, 8data, no parity, 1stop bit */
 #ifdef URSEL0
@@ -572,13 +595,18 @@ void uart0_init(uint16_t baudrate)
 	UBRRHI = (uint8_t) (baudrate>>8);
 	UBRR   = (uint8_t) baudrate;
 
+#if defined(ENABLE_RX)
 	/* Enable UART receiver and transmitter and receive complete interrupt */
 	UART0_CONTROL = _BV(RXCIE)|(1<<RXEN)|(1<<TXEN);
+#else
+	UART0_CONTROL = (1<<TXEN);
+#endif
 
 #endif
 
 } /* uart0_init */
 
+#if defined(ENABLE_RX)
 
 /*************************************************************************
 Function: uart0_getc()
@@ -637,6 +665,8 @@ uint16_t uart0_peek(void)
 	return (UART_LastRxError << 8) + data;
 
 } /* uart0_peek */
+
+#endif
 
 /*************************************************************************
 Function: uart0_putc()
@@ -706,7 +736,7 @@ void uart0_puts_p(const char *progmem_s)
 
 } /* uart0_puts_p */
 
-
+#if defined(ENABLE_RX)
 
 /*************************************************************************
 Function: uart0_available()
@@ -736,6 +766,8 @@ void uart0_flush(void)
 		UART_RxHead = UART_RxTail;
 	}
 } /* uart0_flush */
+
+#endif
 
 #endif
 
