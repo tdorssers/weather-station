@@ -9,14 +9,14 @@
  * Author : Tim Dorssers
  *
  * A barometric sensor is used to implement a simple weather forecasting
- * algorithm by calculating Pa/h. Up to 16 remote AM2320 or DS18B20 sensors can
- * transmit NRZ encoded packets with CRC data using 433MHz ASK/OOK modules
- * connected to the hardware UART at 1200 baud. Up to 6 remote sensors are
- * shown. Minimum and maximum temperatures and humidity values are stored in 4
- * six hour periods. The LCD back light level is auto adjusted using the LDR.
- * A software UART implementation using Timer1 is interfacing with the GPS
- * module at 9600 baud. Libc timekeeping uses the position to determine day and
- * night display mode.
+ * algorithm by calculating Pa/h. Up to 16 remote AHT20, AM2320 or DS18B20
+ * sensors can transmit NRZ encoded packets with CRC data using 433MHz ASK/OOK
+ * modules connected to the hardware UART at 1200 baud. Up to 6 remote sensors
+ * are shown on the LCD. Minimum and maximum temperatures and humidity values
+ * are stored in 4 six hour periods. The LCD back light level is auto adjusted
+ * using the LDR. A software UART implementation using Timer1 is interfacing
+ * with the GPS module at 9600 baud. Libc timekeeping uses the position to
+ * determine day and night display mode.
  */
 
 #define F_CPU 8000000
@@ -39,7 +39,7 @@
 char buffer[26];
 
 typedef enum {OK, NO_RESPONSE, CRC_ERROR} result_t;
-typedef enum {DS18B20, AM2320} type_t;
+typedef enum {DS18B20, AM2320, AHT20} type_t;
 typedef enum {DISABLED, ENABLED, IDLE} status_t;
 
 typedef union {
@@ -509,7 +509,7 @@ static void updateScreen(void) {
 			drawSymbol(25);
 			drawScaled(remote_day.min_temp);
 			ili9341_puts_p(PSTR("C "));
-			if (remote[i].unit.type == AM2320) {
+			if (remote[i].unit.type != DS18B20) {
 				drawScaled(remote_day.min_humid);
 				ili9341_write('%');
 			}
@@ -519,14 +519,14 @@ static void updateScreen(void) {
 			drawSymbol(24);
 			drawScaled(remote_day.max_temp);
 			ili9341_puts_p(PSTR("C "));
-			if (remote[i].unit.type == AM2320) {
+			if (remote[i].unit.type != DS18B20) {
 				drawScaled(remote_day.max_humid);
 				ili9341_write('%');
 			}
 			ili9341_clearTextArea(189);
 			y += 17;
 			// show current humidity
-			if (remote[i].unit.type == AM2320) {
+			if (remote[i].unit.type != DS18B20) {
 				ili9341_setFont(lcdnums12x16);
 				drawScaledLeft(18,y,60,remote[i].humid);
 				ili9341_setFont(Arial_bold_14);
@@ -548,11 +548,13 @@ int main(void) {
 	timer0_init();
 	timer2_init();
 	ili9341_init();
+	uart_init(UART_BAUD_SELECT(1200, F_CPU));
+	if (ili9341_readcommand8(ILI9341_RDSELFDIAG) != 0xc0)
+		uart_puts_P("diag fail\r\n");
 	ili9341_setRotation(3);
 	drawScreen();
 	bme280_init();
 	suart_init();
-	uart_init(UART_BAUD_SELECT(1200, F_CPU));
 	init_adc();
 	init_period();
 	set_zone(1 * ONE_HOUR); // adjust time zone

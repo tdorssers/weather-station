@@ -239,6 +239,15 @@ void ili9341_init(void) {
 	writecommand(ILI9341_DISPON);    // Display on
 }
 
+// 8-bit read mode for read ID or register commands, 24 and 32 bit is not supported
+uint8_t ili9341_readcommand8(uint8_t com) {
+	if (com < ILI9341_RDMODE || (com > ILI9341_RDSELFDIAG && com < ILI9341_RDID1) || com > ILI9341_RDID4) return 0;
+	writecommand_cont(com);
+	uint8_t result = read8_cont();
+	spi_end();
+	return result;
+}
+
 //set coordinate for print or other function
 void ili9341_setaddress(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2) {
 	writecommand_cont(ILI9341_CASET);
@@ -249,11 +258,6 @@ void ili9341_setaddress(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2) {
 	writedata16_cont(y2);
 	writecommand_cont(ILI9341_RAMWR); // memory write
 	spi_end();
-}
-
-// Pass 8-bit (each) R,G,B, get back 16-bit packed color
-static uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
-	return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
 // Reads one pixel/color from the TFT's GRAM

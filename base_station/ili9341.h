@@ -216,7 +216,11 @@
 #define ILI9341_YELLOW 0xFFE0
 #define ILI9341_YELLOWGREEN 0x9E66
 
+// Pass 8-bit (each) R,G,B, get back 16-bit packed color
+#define color565(r, g, b) ((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3))
+
 void ili9341_init();
+uint8_t ili9341_readcommand8(uint8_t com);
 uint16_t ili9341_readPixel(uint16_t x, uint16_t y);
 void ili9341_readRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t *pcolors);
 void ili9341_writeRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16_t *pcolors);
