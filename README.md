@@ -2,7 +2,7 @@
 
 ## Base
 
-A barometric sensor is used to implement a simple weather forecasting algorithm by calculating Pa/h. Up to 16 remote AM2320 or DS18B20 sensors can transmit NRZ encoded packets with CRC data using 433MHz ASK/OOK modules connected to the hardware USART at 1200 baud. Up to 6 remote sensors are shown. Minimum and maximum temperatures and humidity values are stored in 4 six hour periods. The LCD back light level is auto adjusted using the LDR. A software UART implementation using Timer1 is interfacing with the GPS module at 9600 baud. Libc timekeeping uses the position to determine day and night display mode.
+A BME280 barometric sensor is used to implement a simple weather forecasting algorithm by calculating Pa/h. Up to 16 wireless AHT20, AM2320 or DS18B20 sensors transmit NRZ encoded packets with CRC data using a 433MHz ASK/OOK module connected to the hardware UART at 1200 baud. Up to 6 remote sensors are shown on the LCD. Minimum and maximum temperatures and humidity values are stored in 4 six hour periods. The LCD back light level is auto adjusted using the LDR. A software UART implementation using Timer1 is interfacing with the GPS module at 9600 baud. Libc timekeeping uses the GPS position to determine day and night display mode. Time zone and daylight saving time can be set using the menu which is shown by touching the main screen. The touch screen requires calibration, which is done by touching the screen edges. The remote sensors can be given a 3 character name from the menu.
 
 It uses a speed optimized ILI9341 driver for AVR which implements graphics drawing primitives and uses openGLCD library fonts.
 
@@ -12,6 +12,7 @@ It uses a speed optimized ILI9341 driver for AVR which implements graphics drawi
 * RFM210LCF 433MHz ASK/OOK receiver module
 * BME280 digital humidity, pressure and temperature sensor
 * ILI9341 driver for 240x320 TFT LCD module
+* XPT2046 touch screen controller
 * NEO-6M GPS module
 * GL5528 LDR
 
@@ -28,6 +29,14 @@ Day time display mode:
 Night time display mode:
 
 ![](media/base_station_night.jpg)
+
+Main menu with touch buttons:
+
+![](media/base_station_menu.jpg)
+
+Touch screen keyboard to name remote sensors:
+
+![](media/base_station_keys.jpg)
 
 ## Remote ATtiny25/45/85
 
