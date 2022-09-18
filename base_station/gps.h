@@ -13,7 +13,6 @@
 #include <stdint.h>
 #include <time.h>
 
-extern bool gps_valid;
 extern int32_t gps_latitude, gps_longitude;
 extern int16_t gps_speed, gps_course, gps_altitude, gps_hdop;
 extern uint8_t gps_numsats;

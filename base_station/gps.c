@@ -13,26 +13,26 @@
 uint16_t message = 0;
 uint8_t checksum = 0, field = 0, offset = 0;
 char buffer[15];
+bool valid;
 
-bool gps_valid;
 int32_t gps_latitude, gps_longitude;
 int16_t gps_speed, gps_course, gps_altitude, gps_hdop;
 uint8_t gps_numsats;
 struct tm gps_time;
 
 // convert one hex digit to integer
-uint8_t parse_hex(char c) {
+static uint8_t parse_hex(char c) {
 	c |= 0x20; // make it lowercase
 	return (c >= 'a') ? c - 'a' + 0xA : c - '0';
 }
 
 // convert string of two digits to integer
-uint8_t parse_two(char *s) {
+static uint8_t parse_two(char *s) {
 	return ((s[0] - '0') * 10 + (s[1] - '0'));
 }
 
 // convert to integer scaled by 1/100
-int32_t parse_decimal() {
+static int32_t parse_decimal() {
 	char *end = buffer;
 	int32_t num = atol(buffer) * 100;
 	if (num < 0) ++end;
@@ -49,7 +49,7 @@ int32_t parse_decimal() {
 }
 
 // convert to seconds scaled by 1/100 or decimal degrees scaled by 1/100000
-uint32_t parse_degrees() {
+static uint32_t parse_degrees() {
 	char *end = buffer;
 	int32_t deg_min = atol(buffer);
 	while (isdigit(*end)) ++end;
@@ -72,7 +72,7 @@ uint32_t parse_degrees() {
 #define RMC 0x200 // Recommended minimum data
 
 // Returns true if new sentence has just passed checksum test and GPS data is valid
-bool parse_term() {
+static bool parse_term() {
 	// the first term determines the sentence type
 	if (field == 0) {
 		if (strcmp_P(buffer, PSTR("GPGGA")) == 0) message = GGA;
@@ -80,8 +80,8 @@ bool parse_term() {
 	}
 	// checksum term
 	if (message == 0xFF) {
-		if ((parse_hex(buffer[0]) << 4) + parse_hex(buffer[1]) != checksum) gps_valid = false;
-		if (gps_valid) return true;
+		if ((parse_hex(buffer[0]) << 4) + parse_hex(buffer[1]) != checksum) valid = false;
+		if (valid) return true;
 	}
 	if (message == 0) return false;
 	// parse sentence term
@@ -93,10 +93,10 @@ bool parse_term() {
 			gps_time.tm_sec = parse_two(&buffer[4]);
 			break;
 		case RMC + 2:
-			gps_valid = buffer[0] == 'A';
+			valid = buffer[0] == 'A';
 			break;
 		case GGA + 6:
-			gps_valid = buffer[0] > '0';
+			valid = buffer[0] > '0';
 			break;
 		case RMC + 3:
 		case GGA + 2:
@@ -143,7 +143,7 @@ bool decode(char c) {
 	switch (c) {
 		case '$':  // sentence begin
 			checksum = message = field = offset = 0;
-			gps_valid = false;
+			valid = false;
 			break;
 		case ',':  // term terminators
 			checksum ^= c;

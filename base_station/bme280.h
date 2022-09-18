@@ -1,5 +1,5 @@
 /*
- * BME280 I2C Driver
+ * BME280 I2C/SPI Driver
  *
  * Created: 29-11-2020 16:00:30
  *  Author: Tim Dorssers
@@ -16,6 +16,9 @@
 
 // If SDO pin is connected to GND
 #define BME280_ADDRESS (0x76 << 1)
+
+#define BME280_SPI_WRITE 0x7F
+#define BME280_SPI_READ  0x80
 
 #define    BME280_REGISTER_DIG_T1   0x88
 #define    BME280_REGISTER_DIG_T2   0x8A
@@ -48,7 +51,7 @@
 #define    BME280_REGISTER_TEMPDATA     0xFA
 #define    BME280_REGISTER_HUMIDDATA    0xFD
 
-// Oversampling settings. Passing 0 to any measurement disables it
+// Oversampling settings
 #define BME280_OSS_DISABLED 0x00
 #define BME280_OSS_1        0x01
 #define BME280_OSS_2        0x02
@@ -61,29 +64,24 @@
 #define BME280_FORCED_MODE  0x01
 #define BME280_NORMAL_MODE  0x03
 
-typedef struct {
-	uint16_t dig_T1;
-	int16_t  dig_T2;
-	int16_t  dig_T3;
-	uint16_t dig_P1;
-	int16_t  dig_P2;
-	int16_t  dig_P3;
-	int16_t  dig_P4;
-	int16_t  dig_P5;
-	int16_t  dig_P6;
-	int16_t  dig_P7;
-	int16_t  dig_P8;
-	int16_t  dig_P9;
-	uint8_t  dig_H1;
-	int16_t  dig_H2;
-	uint8_t  dig_H3;
-	int16_t  dig_H4;
-	int16_t  dig_H5;
-	int8_t   dig_H6;
-	uint32_t t_fine;
-} bme280_calib_data;
+// IIR filter coefficient
+#define BME280_IIR_DISABLED 0x00
+#define BME280_IIR_2        0x01
+#define BME280_IIR_4        0x02
+#define BME280_IIR_8        0x03
+#define BME280_IIR_16       0x04
 
-void bme280_init(void);
+// Standby duration in milliseconds
+#define BME280_T_SB_MS_0_5  0x00
+#define BME280_T_SB_MS_10   0x06
+#define BME280_T_SB_MS_20   0x07
+#define BME280_T_SB_MS_62_5 0x01
+#define BME280_T_SB_MS_125  0x02
+#define BME280_T_SB_MS_250  0x03
+#define BME280_T_SB_MS_500  0x04
+#define BME280_T_SB_MS_1000 0x05
+
+uint8_t bme280_init(void);
 void bme280_get_sensor_data(int16_t *temperature, uint32_t *pressure, uint32_t *humidity);
 
 #endif /* BME280_H_ */

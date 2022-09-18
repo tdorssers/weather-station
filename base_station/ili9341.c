@@ -28,12 +28,12 @@ const uint8_t *font;
 uint8_t textsize = 1;
 uint16_t cursor_x = 0, cursor_y = 0, font_size;
 uint16_t textcolor = ILI9341_WHITE, textbgcolor = ILI9341_WHITE;
-uint16_t _width = ILI9341_TFTWIDTH, _height = ILI9341_TFTHEIGHT;
+int16_t _width = ILI9341_TFTWIDTH, _height = ILI9341_TFTHEIGHT;
 
 static const uint8_t init_commands[] PROGMEM = {
 	4, 0xEF, 0x03, 0x80, 0x02,
-	4, 0xCF, 0x00, 0XC1, 0X30, // Power Control B
-	5, 0xED, 0x64, 0x03, 0X12, 0X81, // Power On Sequence Control
+	4, 0xCF, 0x00, 0xC1, 0x30, // Power Control B
+	5, 0xED, 0x64, 0x03, 0x12, 0x81, // Power On Sequence Control
 	4, 0xE8, 0x85, 0x00, 0x78, // Driver Timing Control A
 	6, 0xCB, 0x39, 0x2C, 0x00, 0x34, 0x02, // Power Control A
 	2, 0xF7, 0x20, // Pump Ratio Control
@@ -164,7 +164,7 @@ inline uint8_t spiread(void) {
 }
 
 // Send command and deselect
-void writecommand(uint8_t com) {
+static void writecommand(uint8_t com) {
 	PORTD &= ~_BV(PD6); // set DC low to send command
 	spi_begin();
 	spiwrite(com);
@@ -173,7 +173,7 @@ void writecommand(uint8_t com) {
 }
 
 // Send command
-inline void writecommand_cont(uint8_t com) {
+static void writecommand_cont(uint8_t com) {
 	PORTD &= ~_BV(PD6); // set DC low to send command
 	spi_begin();
 	spiwrite(com);
@@ -181,14 +181,14 @@ inline void writecommand_cont(uint8_t com) {
 }
 
 // Send 8 bit data and deselect
-void writedata8(uint8_t data) {
+static void writedata8(uint8_t data) {
 	spi_begin();
 	spiwrite(data);
 	spi_end();
 }
 
 // Send 16 bit data and deselect
-void writedata16(uint16_t data) {
+inline void writedata16(uint16_t data) {
 	spi_begin();
 	spiwrite(data >> 8);
 	spiwrite(data);
@@ -212,10 +212,10 @@ void ili9341_init(void) {
 	PORTD |= _BV(PD4); // set RST high for normal operation
 	DDRD |= _BV(PD4) | _BV(PD6) | _BV(PD7); // RST, DC and CS as output
 	// Initialize SPI
-	DDRB |= _BV(PB2) | _BV(PB3) | _BV(PB5); // SS, MOSI and SCK as output
+	DDRB |= _BV(PB3) | _BV(PB5); // MOSI and SCK as output
 	SPCR = _BV(SPE) | _BV(MSTR); // Mode 0, fOsc/4
 	SPSR |= _BV(SPI2X); // Double clock rate
-	PORTD |= _BV(PD7); // CS low during startup
+	PORTD |= _BV(PD7); // CS high during startup
 	// Hardware reset
 	PORTD &= ~_BV(PD4);
 	_delay_ms(5);
@@ -241,7 +241,6 @@ void ili9341_init(void) {
 
 // 8-bit read mode for read ID or register commands, 24 and 32 bit is not supported
 uint8_t ili9341_readcommand8(uint8_t com) {
-	if (com < ILI9341_RDMODE || (com > ILI9341_RDSELFDIAG && com < ILI9341_RDID1) || com > ILI9341_RDID4) return 0;
 	writecommand_cont(com);
 	uint8_t result = read8_cont();
 	spi_end();
@@ -304,13 +303,11 @@ void ili9341_fillScreen(uint16_t color) {
 void ili9341_drawpixel(uint16_t x,uint16_t y,uint16_t color) {
 	if ((x >= _width) || (y >= _height)) return;
 	ili9341_setaddress(x,y,x+1,y+1);
-	spi_begin();
-	writedata16_cont(color);
-	spi_end();
+	writedata16(color);
 }
 
 //draw vertical line
-void ili9341_drawvline(uint16_t x,uint16_t y,uint16_t h,uint16_t color) {
+void ili9341_drawvline(int16_t x,int16_t y,int16_t h,uint16_t color) {
 	if ((x >= _width) || (y >= _height)) return;
 	if ((y+h-1) >= _height)
 		h = _height-y;
@@ -321,7 +318,7 @@ void ili9341_drawvline(uint16_t x,uint16_t y,uint16_t h,uint16_t color) {
 }
 
 //draw horizontal line
-void ili9341_drawhline(uint16_t x,uint16_t y,uint16_t w,uint16_t color) {
+void ili9341_drawhline(int16_t x,int16_t y,int16_t w,uint16_t color) {
 	if ((x >= _width) || (y >= _height)) return;
 	if ((x+w-1) >= _width)
 		w = _width-x;
@@ -332,7 +329,7 @@ void ili9341_drawhline(uint16_t x,uint16_t y,uint16_t w,uint16_t color) {
 }
 
 //draw color filled rectangle
-void ili9341_fillrect(uint16_t x,uint16_t y,uint16_t w,uint16_t h,uint16_t color) {
+void ili9341_fillrect(int16_t x,int16_t y,int16_t w,int16_t h,uint16_t color) {
 	if ((x >= _width) || (y >= _height)) return;
 	if ((x+w-1) >= _width)
 		w = _width-x;
@@ -413,7 +410,7 @@ void ili9341_drawRect(uint16_t x0, uint16_t y0, uint16_t width, uint16_t height,
 	ili9341_drawvline(x0+width-1, y0, height, color);
 }
 
-void ili9341_drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color) {
+void ili9341_drawCircle(uint16_t x0, uint16_t y0, uint16_t r, uint16_t color) {
 	//ili9341_drawRoundRect(x0-r, y0-r, 2*r+1, 2*r+1, r, color);
 	int16_t x = -r, y = 0, err = 2-2*r, e2;
 	do {
@@ -431,7 +428,7 @@ void ili9341_drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color) {
 	} while (x <= 0);
 }
 
-void ili9341_fillCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color) {
+void ili9341_fillCircle(uint16_t x0, uint16_t y0, uint16_t r, uint16_t color) {
 	int16_t x = -r, y = 0, err = 2-2*r, e2;
 	do {
 		ili9341_drawvline(x0-x, y0-y, 2*y, color);
@@ -732,7 +729,7 @@ void ili9341_drawChar(uint16_t x, uint16_t y, unsigned char c, uint16_t fgcolor,
 	uint8_t font_first = readFontByte(&font[FONT_FIRST_CHAR]);
 	uint8_t font_count = readFontByte(&font[FONT_CHAR_COUNT]);
 	const uint8_t *base = &font[FONT_WIDTH_TABLE];
-	uint8_t padding = (font_size == 1) ? 0 : 1;
+	uint8_t padding = (font_size == 1) ? 0 : 1; // size of one indicates fixed width no pixel padding
 	uint8_t bytes = (font_height + 7) / 8; // calculates height in rounded up bytes
 	uint8_t shift = 0;
 	c -= font_first;
@@ -802,7 +799,7 @@ void ili9341_drawChar(uint16_t x, uint16_t y, unsigned char c, uint16_t fgcolor,
 			}
 		}
 		if (padding)
-			spiwrite16(bgcolor, (font_width+padding) * size); // extra pixels below for spacing
+			spiwrite16(bgcolor, (font_width+padding) * size * size); // extra pixels below for spacing
 		spi_end();
 	}
 }
@@ -850,6 +847,11 @@ void ili9341_setCursor(uint16_t x, uint16_t y) {
 	cursor_y = y;
 }
 
+void ili9341_getCursor(uint16_t *x, uint16_t *y) {
+	*x = cursor_x;
+	*y = cursor_y;
+}
+
 void ili9341_setTextColor(uint16_t color, uint16_t bg) {
 	textcolor = color;
 	textbgcolor = bg;
@@ -881,6 +883,13 @@ void ili9341_write(char c) {
 	}
 }
 
+uint8_t ili9341_fontHeight(void) {
+	uint8_t font_height = readFontByte(&font[FONT_HEIGHT]);
+	if (font_size != 1)
+		font_height++;
+	return font_height * textsize;
+}
+
 uint8_t ili9341_charWidth(char c) {
 	uint8_t font_width, font_first = readFontByte(&font[FONT_FIRST_CHAR]);
 	uint8_t font_count = readFontByte(&font[FONT_CHAR_COUNT]);
@@ -898,7 +907,19 @@ size_t ili9341_strWidth(const char *string) {
 		uint8_t cw = ili9341_charWidth(*string++);
 		if (cw == 0) continue;
 		sw += cw;
-		if (font_size != 1) sw++;
+		if (font_size != 1) sw+=textsize;
+	}
+	return sw;
+}
+
+size_t ili9341_strWidth_p(const char *string) {
+	size_t sw = 0;
+	register char c;
+	while ((c = pgm_read_byte(string++))) {
+		uint8_t cw = ili9341_charWidth(c);
+		if (cw == 0) continue;
+		sw += cw;
+		if (font_size != 1) sw+=textsize;
 	}
 	return sw;
 }
@@ -920,5 +941,6 @@ void ili9341_puts_p(const char *string) {
 void ili9341_clearTextArea(uint16_t x) {
 	uint8_t font_height = readFontByte(&font[FONT_HEIGHT]);
 	if (font_size != 1) font_height++;
+	font_height *= textsize;
 	ili9341_fillrect(min(x, cursor_x), cursor_y, abs((int16_t)x - cursor_x), font_height, textbgcolor);
 }
