@@ -28,7 +28,7 @@ const uint8_t *font;
 uint8_t textsize = 1;
 uint16_t cursor_x = 0, cursor_y = 0, font_size;
 uint16_t textcolor = ILI9341_WHITE, textbgcolor = ILI9341_WHITE;
-int16_t _width = ILI9341_TFTWIDTH, _height = ILI9341_TFTHEIGHT;
+uint16_t _width = ILI9341_TFTWIDTH, _height = ILI9341_TFTHEIGHT;
 
 static const uint8_t init_commands[] PROGMEM = {
 	4, 0xEF, 0x03, 0x80, 0x02,
@@ -56,6 +56,7 @@ static const uint8_t init_commands[] PROGMEM = {
 };
 
 #define FAST_SPI // Enable fast SPI writing optimizations for Fck/2 double speed mode
+//#define ROUND_RECT // Use rounded rectangle functions to draw circles
 
 #define spi_begin() PORTD &= ~_BV(PD7) // CS low
 #define spi_end() PORTD |= _BV(PD7) // CS high
@@ -77,7 +78,7 @@ inline void spiwrite(uint8_t data) {
 	);
 #else
 	SPDR = data;
-	while (!(SPSR & _BV(SPIF)));
+	loop_until_bit_is_set(SPSR, SPIF);
 #endif
 }
 
@@ -159,7 +160,7 @@ inline void spicopy16(uint8_t *data, uint16_t count)
 
 // Retrieve 8 bit value
 inline uint8_t spiread(void) {
-	while (!(SPSR & _BV(SPIF)));
+	loop_until_bit_is_set(SPSR, SPIF);
 	return SPDR;
 }
 
@@ -301,15 +302,15 @@ void ili9341_fillScreen(uint16_t color) {
 
 //draw pixel
 void ili9341_drawpixel(uint16_t x,uint16_t y,uint16_t color) {
-	if ((x >= _width) || (y >= _height)) return;
+	if (x >= _width || y >= _height) return;
 	ili9341_setaddress(x,y,x+1,y+1);
 	writedata16(color);
 }
 
 //draw vertical line
-void ili9341_drawvline(int16_t x,int16_t y,int16_t h,uint16_t color) {
-	if ((x >= _width) || (y >= _height)) return;
-	if ((y+h-1) >= _height)
+void ili9341_drawvline(uint16_t x,uint16_t y,uint16_t h,uint16_t color) {
+	if (x >= _width || y >= _height) return;
+	if (y+h > _height)
 		h = _height-y;
 	ili9341_setaddress(x,y,x,y+h-1);
 	spi_begin();
@@ -318,9 +319,9 @@ void ili9341_drawvline(int16_t x,int16_t y,int16_t h,uint16_t color) {
 }
 
 //draw horizontal line
-void ili9341_drawhline(int16_t x,int16_t y,int16_t w,uint16_t color) {
-	if ((x >= _width) || (y >= _height)) return;
-	if ((x+w-1) >= _width)
+void ili9341_drawhline(uint16_t x,uint16_t y,uint16_t w,uint16_t color) {
+	if (x >= _width || y >= _height) return;
+	if (x+w > _width)
 		w = _width-x;
 	ili9341_setaddress(x,y,x+w-1,y);
 	spi_begin();	
@@ -329,11 +330,11 @@ void ili9341_drawhline(int16_t x,int16_t y,int16_t w,uint16_t color) {
 }
 
 //draw color filled rectangle
-void ili9341_fillrect(int16_t x,int16_t y,int16_t w,int16_t h,uint16_t color) {
-	if ((x >= _width) || (y >= _height)) return;
-	if ((x+w-1) >= _width)
+void ili9341_fillrect(uint16_t x,uint16_t y,uint16_t w,uint16_t h,uint16_t color) {
+	if (x >= _width || y >= _height) return;
+	if (x+w > _width)
 		w = _width-x;
-	if ((y+h-1) >= _height)
+	if (y+h > _height)
 		h = _height-y;
 	ili9341_setaddress(x, y, x+w-1, y+h-1);
 	spi_begin();
@@ -350,10 +351,10 @@ void ili9341_fillrect(int16_t x,int16_t y,int16_t w,int16_t h,uint16_t color) {
 #define MADCTL_BGR 0x08
 #define MADCTL_MH  0x04
 
-//rotate screen at desired orientation
+//rotate screen at desired orientation (0-3)
 void ili9341_setRotation(uint8_t m) {
 	writecommand(ILI9341_MADCTL);
-	switch (m % 4) {
+	switch (m) {
 		case 0:
 			writedata8(MADCTL_MX | MADCTL_BGR);
 			_width = ILI9341_TFTWIDTH;
@@ -369,7 +370,7 @@ void ili9341_setRotation(uint8_t m) {
 			_width = ILI9341_TFTWIDTH;
 			_height = ILI9341_TFTHEIGHT;
 			break;
-		case 3:
+		default:
 			writedata8(MADCTL_MX | MADCTL_MY | MADCTL_MV | MADCTL_BGR);
 			_width = ILI9341_TFTHEIGHT;
 			_height = ILI9341_TFTWIDTH;
@@ -411,7 +412,9 @@ void ili9341_drawRect(uint16_t x0, uint16_t y0, uint16_t width, uint16_t height,
 }
 
 void ili9341_drawCircle(uint16_t x0, uint16_t y0, uint16_t r, uint16_t color) {
-	//ili9341_drawRoundRect(x0-r, y0-r, 2*r+1, 2*r+1, r, color);
+#ifdef ROUND_RECT
+	ili9341_drawRoundRect(x0-r, y0-r, 2*r+1, 2*r+1, r, color);
+#else
 	int16_t x = -r, y = 0, err = 2-2*r, e2;
 	do {
 		ili9341_drawpixel(x0-x, y0+y,color);
@@ -426,9 +429,13 @@ void ili9341_drawCircle(uint16_t x0, uint16_t y0, uint16_t r, uint16_t color) {
 		if (e2 > x)
 			err += ++x*2+1;
 	} while (x <= 0);
+#endif
 }
 
 void ili9341_fillCircle(uint16_t x0, uint16_t y0, uint16_t r, uint16_t color) {
+#ifdef ROUND_RECT
+	ili9341_fillRoundRect(x0-r, y0-r, 2*r+1, 2*r+1, r, color);
+#else
 	int16_t x = -r, y = 0, err = 2-2*r, e2;
 	do {
 		ili9341_drawvline(x0-x, y0-y, 2*y, color);
@@ -441,6 +448,7 @@ void ili9341_fillCircle(uint16_t x0, uint16_t y0, uint16_t r, uint16_t color) {
 		if (e2 > x)
 			err += ++x*2+1;
 	} while (x <= 0);
+#endif
 }
 
 // if true, TFT will be blank (white), displays frame buffer is unaffected
@@ -471,7 +479,7 @@ void ili9341_scrollAddress(uint16_t vsp) {
 	writedata16(vsp);
 }
 
-void ili9341_drawEllipse(int16_t x0, int16_t y0, int16_t rx, int16_t ry, uint16_t color) {
+void ili9341_drawEllipse(uint16_t x0, uint16_t y0, int16_t rx, int16_t ry, uint16_t color) {
 	if (rx<2 || ry<2) return;
 	int16_t x, y;
 	int32_t rx2 = rx * rx;
@@ -503,7 +511,7 @@ void ili9341_drawEllipse(int16_t x0, int16_t y0, int16_t rx, int16_t ry, uint16_
 	}
 }
 
-void ili9341_fillEllipse(int16_t x0, int16_t y0, int16_t rx, int16_t ry, uint16_t color) {
+void ili9341_fillEllipse(uint16_t x0, uint16_t y0, int16_t rx, int16_t ry, uint16_t color) {
 	if (rx<2 || ry<2) return;
 	int16_t x, y;
 	int32_t rx2 = rx * rx;
@@ -532,7 +540,7 @@ void ili9341_fillEllipse(int16_t x0, int16_t y0, int16_t rx, int16_t ry, uint16_
 }
 
 // Draw a triangle
-void ili9341_drawTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {
+void ili9341_drawTriangle(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t color) {
 	ili9341_drawLine(x0, y0, x1, y1, color);
 	ili9341_drawLine(x1, y1, x2, y2, color);
 	ili9341_drawLine(x2, y2, x0, y0, color);

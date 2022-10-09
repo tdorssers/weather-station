@@ -11,15 +11,13 @@
  * PD3 -> T_CS
  */ 
 
-#define F_CPU 8000000
-
 #include <avr/io.h>
-#include <util/delay.h>
+#include <avr/eeprom.h>
 #include "xpt2046.h"
 
 uint16_t ts_x, ts_y;
-uint16_t ts_xMin=0, ts_xMax=0;
-uint16_t ts_yMin=0, ts_yMax=0;
+uint16_t ts_xMin, ts_xMax, ts_yMin, ts_yMax;
+uint16_t EEMEM nv_xMin, nv_xMax, nv_yMin, nv_yMax;
 
 #define map(x,in_min,in_max,out_min,out_max) (((x)-(in_min))*((out_max)-(out_min))/((in_max)-(in_min))+(out_min))
 #define min(a,b) ((a)<(b)?(a):(b))
@@ -30,7 +28,7 @@ uint16_t ts_yMin=0, ts_yMax=0;
 // Write to the SPI bus (MOSI pin) and also receive (MISO pin)
 uint8_t spi_transfer(uint8_t data) {
 	SPDR = data;
-	while (!(SPSR & _BV(SPIF))) ; // wait
+	loop_until_bit_is_set(SPSR, SPIF);
 	return SPDR;
 }
 
@@ -53,6 +51,10 @@ void xpt2046_init(void) {
 	spi_transfer(CTRL_HI_Y | CTRL_LO_SER);
 	spi_transfer16(0);  // Flush, just to be sure
 	spi_end();
+	ts_xMin = eeprom_read_word(&nv_xMin);
+	ts_xMax = eeprom_read_word(&nv_xMax);
+	ts_yMin = eeprom_read_word(&nv_yMin);
+	ts_yMax = eeprom_read_word(&nv_yMax);
 }
 
 uint16_t _readLoop(uint8_t ctrl, uint8_t max_samples) {
@@ -89,14 +91,18 @@ void xpt2046_getPosition(uint8_t max_samples, uint8_t rotation) {
 	uint16_t vi, vj;
 	xpt2046_getRaw(&vi, &vj, max_samples);
 
-	if (ts_xMin == 0 && ts_xMax == 0)
+	if (ts_xMin == 0xffff)
 		ts_xMin = ts_xMax = vi;
-	if (ts_yMin == 0 && ts_yMax == 0)
+	if (ts_yMin == 0xffff)
 		ts_yMin = ts_yMax = vj;
 	ts_xMin = min(vi, ts_xMin);
 	ts_xMax = max(vi, ts_xMax);
 	ts_yMin = min(vj, ts_yMin);
 	ts_yMax = max(vj, ts_yMax);
+	eeprom_update_word(&nv_xMin, ts_xMin);
+	eeprom_update_word(&nv_xMax, ts_xMax);
+	eeprom_update_word(&nv_yMin, ts_yMin);
+	eeprom_update_word(&nv_yMax, ts_yMax);
 
 	ts_x = map((int32_t)vi, ts_xMin, ts_xMax, 0, LCD_WIDTH - 1);
 	ts_y = map((int32_t)vj, ts_yMin, ts_yMax, 0, LCD_HEIGHT - 1);
@@ -114,7 +120,7 @@ void xpt2046_getPosition(uint8_t max_samples, uint8_t rotation) {
 			swap(ts_x, ts_y);
 			ts_x = LCD_HEIGHT - 1 - ts_x;
 			break;
-		case 3:
+		default:
 			break;
 	}
 }

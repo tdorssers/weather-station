@@ -28,7 +28,7 @@ int32_t t_fine;
 #ifdef USE_SPI
 inline uint8_t spi(uint8_t data) {
 	SPDR = data;
-	while (!(SPSR & _BV(SPIF))) ; // wait
+	loop_until_bit_is_set(SPSR, SPIF);
 	return SPDR;
 }
 #endif
