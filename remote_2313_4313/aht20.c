@@ -17,9 +17,8 @@ uint8_t aht20_get(uint16_t *humid, int16_t *temperature) {
 	/* send status command */
 	if (i2c_start(AHTXX_ADDRESS << 1 | I2C_WRITE)) return 1;
 	i2c_write(AHTXX_STATUS_REG);
-	i2c_stop();
 	/* check calibration bit */
-	i2c_start(AHTXX_ADDRESS << 1 | I2C_READ);
+	i2c_rep_start(AHTXX_ADDRESS << 1 | I2C_READ);
 	uint8_t status = i2c_readNak();
 	i2c_stop();
 	if (!(status & 0x08)) {
@@ -32,6 +31,7 @@ uint8_t aht20_get(uint16_t *humid, int16_t *temperature) {
 		_delay_ms(10);
 	}
 	/* send measurement command */
+	i2c_start(AHTXX_ADDRESS << 1 | I2C_WRITE);
 	i2c_write(AHTXX_START_MEASUREMENT_REG);
 	i2c_write(0x33);
 	i2c_write(0x00);

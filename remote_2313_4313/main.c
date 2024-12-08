@@ -85,10 +85,12 @@ int main(void) {
 			result = am2320_get(&txData.humid, &txData.temp);
 			type = 1;
 		}
+		#ifndef DEBUG
 		if (result == 1) {
 			result = aht20_get(&txData.humid, &txData.temp);
 			type = 2;
 		}
+		#endif
 		txData.unit = type << 6 | result << 4 | get_id();
 		#ifdef DEBUG
 		if (result == 1)
