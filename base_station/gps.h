@@ -13,11 +13,11 @@
 #include <stdint.h>
 #include <time.h>
 
-extern int32_t gps_latitude, gps_longitude;
-extern int16_t gps_speed, gps_course, gps_altitude, gps_hdop;
+extern int32_t gps_latitude, gps_longitude, gps_altitude;
+extern int16_t gps_speed, gps_course, gps_hdop;
 extern uint8_t gps_numsats;
 extern struct tm gps_time;
 
-bool decode(char c);
+bool gps_decode(char c);
 
 #endif /* GPS_H_ */

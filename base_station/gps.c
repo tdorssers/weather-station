@@ -10,13 +10,12 @@
 #include <stdlib.h>
 #include "gps.h"
 
-uint16_t message = 0;
-uint8_t checksum = 0, field = 0, offset = 0;
+uint8_t checksum = 0, message = 0, field = 0, offset = 0;
 char buffer[15];
 bool valid;
 
-int32_t gps_latitude, gps_longitude;
-int16_t gps_speed, gps_course, gps_altitude, gps_hdop;
+int32_t gps_latitude, gps_longitude, gps_altitude;
+int16_t gps_speed, gps_course, gps_hdop;
 uint8_t gps_numsats;
 struct tm gps_time;
 
@@ -40,7 +39,7 @@ static int32_t parse_decimal() {
 	uint8_t frac = 0;
 	if (*end == '.') {
 		uint8_t mult = 10;
-		while (isdigit(*++end) && mult > 1) {
+		while (isdigit(*++end)) {
 			frac += mult * (*end - '0');
 			mult /= 10;
 		}
@@ -56,7 +55,7 @@ static uint32_t parse_degrees() {
 	uint16_t frac = 0;
 	if (*end == '.') {
 		uint16_t mult = 1000;
-		while (isdigit(*++end) && mult > 1) {
+		while (isdigit(*++end)) {
 			frac += mult * (*end - '0');
 			mult /= 10;
 		}
@@ -68,49 +67,57 @@ static uint32_t parse_degrees() {
 #endif
 }
 
-#define GGA 0x100 // Global positioning system fix data
-#define RMC 0x200 // Recommended minimum data
+#define GGA 0x20 // Global positioning system fix data
+#define GLL 0x40 // Latitude and longitude, with time of position fix and status
+#define RMC 0x60 // Recommended minimum data
 
 // Returns true if new sentence has just passed checksum test and GPS data is valid
 static bool parse_term() {
 	// the first term determines the sentence type
 	if (field == 0) {
 		if (strcmp_P(buffer, PSTR("GPGGA")) == 0) message = GGA;
+		//if (strcmp_P(buffer, PSTR("GPGLL")) == 0) message = GLL;
 		if (strcmp_P(buffer, PSTR("GPRMC")) == 0) message = RMC;
 	}
 	// checksum term
 	if (message == 0xFF) {
 		if ((parse_hex(buffer[0]) << 4) + parse_hex(buffer[1]) != checksum) valid = false;
-		if (valid) return true;
+		return valid;
 	}
 	if (message == 0) return false;
 	// parse sentence term
 	switch (message + field) {
+		//case GLL + 5:
 		case RMC + 1:
-		case GGA + 1:
+		//case GGA + 1:
 			gps_time.tm_hour = parse_two(buffer);
 			gps_time.tm_min = parse_two(&buffer[2]);
 			gps_time.tm_sec = parse_two(&buffer[4]);
 			break;
+		//case GLL + 6:
 		case RMC + 2:
 			valid = buffer[0] == 'A';
 			break;
 		case GGA + 6:
 			valid = buffer[0] > '0';
 			break;
-		case RMC + 3:
+		//case GLL + 1:
+		//case RMC + 3:
 		case GGA + 2:
 			gps_latitude = parse_degrees();
 			break;
-		case RMC + 4:
+		//case GLL + 2:
+		//case RMC + 4:
 		case GGA + 3:
 			if (buffer[0] == 'S') gps_latitude = -gps_latitude;
 			break;
-		case RMC + 5:
+		//case GLL + 3:
+		//case RMC + 5:
 		case GGA + 4:
 			gps_longitude = parse_degrees();
 			break;
-		case RMC + 6:
+		//case GLL + 4:
+		//case RMC + 6:
 		case GGA + 5:
 			if (buffer[0] == 'W') gps_longitude = -gps_longitude;
 			break;
@@ -138,7 +145,8 @@ static bool parse_term() {
 	return false;
 }
 
-bool decode(char c) {
+// Returns true when sentence is complete and valid
+bool gps_decode(char c) {
 	bool completed = false;
 	switch (c) {
 		case '$':  // sentence begin

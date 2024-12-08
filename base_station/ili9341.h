@@ -251,6 +251,7 @@ void ili9341_drawRoundRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint1
 void ili9341_fillRoundRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t r, uint16_t color);
 void ili9341_drawXBitmapTrans(uint16_t x, uint16_t y, const char bitmap[], uint16_t w, uint16_t h, uint16_t color);
 void ili9341_drawXBitmap(uint16_t x, uint16_t y, const char bitmap[], uint16_t w, uint16_t h, uint16_t color, uint16_t bg);
+void ili9341_drawRLEBitmap(uint16_t x, uint16_t y, const char bitmap[], uint16_t w, uint16_t h, uint16_t color, uint16_t bg);
 void ili9341_drawChar(uint16_t x, uint16_t y, unsigned char c, uint16_t fgcolor, uint16_t bgcolor, uint8_t size);
 void ili9341_setFont(const uint8_t *f);
 void ili9341_setCursor(uint16_t x, uint16_t y);

@@ -15,7 +15,9 @@
  * PD4 -> RST
  */ 
 
-#define F_CPU 8000000
+#ifndef F_CPU
+#define F_CPU 12000000
+#endif
 
 #include <avr/io.h>
 #include <avr/pgmspace.h>
@@ -57,6 +59,7 @@ static const uint8_t init_commands[] PROGMEM = {
 
 #define FAST_SPI // Enable fast SPI writing optimizations for Fck/2 double speed mode
 //#define ROUND_RECT // Use rounded rectangle functions to draw circles
+//#define TRANSPARENT // Enable transparent character drawing
 
 #define spi_begin() PORTD &= ~_BV(PD7) // CS low
 #define spi_end() PORTD |= _BV(PD7) // CS high
@@ -756,6 +759,7 @@ void ili9341_drawChar(uint16_t x, uint16_t y, unsigned char c, uint16_t fgcolor,
 	}
 	if ((x+font_width*size > _width) || (y+font_height*size > _height)) return;
 	if (fgcolor == bgcolor) {
+#ifdef TRANSPARENT
 		uint16_t xoff, yoff, count;
 		uint8_t mask;
 		for (uint8_t byte = bytes; byte > 0; byte--, base += font_width) {
@@ -786,6 +790,9 @@ void ili9341_drawChar(uint16_t x, uint16_t y, unsigned char c, uint16_t fgcolor,
 			}
 			y += 8 * size;
 		}
+#else
+		return;
+#endif
 	} else {
 		ili9341_setaddress(x, y, x + (font_width + padding) * size - 1, y + (font_height+padding) * size - 1);
 		spi_begin();
@@ -812,6 +819,7 @@ void ili9341_drawChar(uint16_t x, uint16_t y, unsigned char c, uint16_t fgcolor,
 	}
 }
 
+// Draw transparent XBM
 void ili9341_drawXBitmapTrans(uint16_t x, uint16_t y, const char bitmap[], uint16_t w, uint16_t h, uint16_t color) {
 	uint8_t byteWidth = (w + 7) / 8; // Bitmap scan line pad = whole byte
 	uint8_t byte = 0;
@@ -829,6 +837,7 @@ void ili9341_drawXBitmapTrans(uint16_t x, uint16_t y, const char bitmap[], uint1
 	}
 }
 
+// Draw XBM
 void ili9341_drawXBitmap(uint16_t x, uint16_t y, const char bitmap[], uint16_t w, uint16_t h, uint16_t color, uint16_t bg) {
 	uint8_t byteWidth = (w + 7) / 8; // Bitmap scan line pad = whole byte
 	uint8_t byte = 0;
@@ -846,6 +855,31 @@ void ili9341_drawXBitmap(uint16_t x, uint16_t y, const char bitmap[], uint16_t w
 		}
 		spi_end();
 	}
+}
+
+// Draw compressed monochrome bitmap
+void ili9341_drawRLEBitmap(uint16_t x, uint16_t y, const char bitmap[], uint16_t w, uint16_t h, uint16_t color, uint16_t bg) {
+	ili9341_setaddress(x, y, x+w-1, y+h-1);
+	spi_begin();
+	int32_t c = w * h;
+	while (c > 0) {
+		uint8_t byte = pgm_read_byte(bitmap++);
+		// bit 7 is the encoding type: RLE or plain
+		if (byte & 0x80) {
+			// bits 0-5 is the length (1-64) and bit 6 is the value
+			uint8_t repeat = (byte & 0x3f) + 1;
+			spiwrite16((byte & 0x40) ? color : bg, repeat);
+			c -= repeat;
+		} else {
+			// Bit order left-to-right = LSB to MSB:
+			for (uint8_t i = 0; i < 7; i++) {
+				writedata16_cont((byte & 0x1) ? color : bg);
+				byte >>= 1;
+				c--;
+			}
+		}
+	}
+	spi_end();
 }
 
 void ili9341_setCursor(uint16_t x, uint16_t y) {

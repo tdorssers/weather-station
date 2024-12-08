@@ -5,7 +5,9 @@
  *  Author: Tim Dorssers
  */ 
 
-#define F_CPU 8000000
+#ifndef F_CPU
+#define F_CPU 12000000
+#endif
 
 #include <avr/io.h>
 #include <avr/interrupt.h>

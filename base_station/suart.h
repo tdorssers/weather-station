@@ -13,12 +13,13 @@
 #include <stdint.h>
 
 #define BAUD		9600
-#define STX_SIZE	128		// between 2 and 256
-#define	SRX_SIZE	128
+#define STX_SIZE	2		// between 2 and 256
+#define	SRX_SIZE	256
 
 #if defined(__AVR_ATmega48__) || defined(__AVR_ATmega8__) || defined(__AVR_ATmega88__) || \
-    defined(__AVR_ATmega168__) || defined(__AVR_ATmega48P__) ||defined(__AVR_ATmega88P__) || \
-	defined(__AVR_ATmega168P__) || defined(__AVR_ATmega328P__)
+    defined(__AVR_ATmega168__) || defined(__AVR_ATmega48P__) || defined(__AVR_ATmega88P__) || \
+	defined(__AVR_ATmega168P__) || defined(__AVR_ATmega328P__) || defined(__AVR_ATmega328__) || \
+	defined(__AVR_ATtiny48__) || defined(__AVR_ATtiny88__)
 	#define SRX			PB0     // ICP
 	#define SRXPIN		PINB
 	#define STX			PB1     // OC1A
@@ -47,6 +48,11 @@
 	#define SRXPIN		PINE
 	#define STX			PD5     // OC1A
 	#define STXDDR		DDRD
+#elif defined(__AVR_ATtiny2313__) || defined(__AVR_ATtiny2313A__) || defined(__AVR_ATtiny4313__)
+	#define SRX			PD6     // ICP
+	#define SRXPIN		PIND
+	#define STX			PD3     // OC1A
+	#define STXDDR		DDRD
 #elif defined(__AVR_ATmega169__) || defined(__AVR_ATmega329__) || defined(__AVR_ATmega649__) || \
       defined(__AVR_ATmega325__) ||defined(__AVR_ATmega3250__) || defined(__AVR_ATmega645__) || \
 	  defined(__AVR_ATmega6450__) || defined(__AVR_ATmega3290__) || defined(__AVR_ATmega6490__)
@@ -54,6 +60,11 @@
 	#define SRXPIN		PIND
 	#define STX			PD5     // OC1A
 	#define STXDDR		DDRD
+#elif defined(__AVR_ATtiny24__) || defined(__AVR_ATtiny44__) || defined(__AVR_ATtiny84__)
+	#define SRX			PA7     // ICP
+	#define SRXPIN		PINA
+	#define STX			PA6     // OC0A
+	#define STXDDR		DDRA
 #else
 	#error "no pin definition for MCU available"
 #endif
