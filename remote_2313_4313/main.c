@@ -75,7 +75,6 @@ int main(void) {
 	packet_t txData;
 	
 	uart_init(UART_BAUD_SELECT(1200, F_CPU));
-	aht20_init();
 	// Enter main loop
     while (1) {
 		txData.humid = 0xaaaa;
