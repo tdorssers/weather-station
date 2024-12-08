@@ -93,7 +93,6 @@ int main(void) {
 	PORTB |= _BV(PB3);
 	GIMSK |= _BV(PCIE);
 	PCMSK |= _BV(PCINT3);
-	aht20_init();
 	// Enter main loop
 	while (1) {
 		txData.humid = 0xaaaa;

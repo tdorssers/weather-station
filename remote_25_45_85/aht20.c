@@ -11,34 +11,31 @@
 #include "aht20.h"
 #include "i2cmaster.h"
 
-void aht20_init (void) {
-	/* Set initialization register */
-	i2c_start(AHTXX_ADDRESS << 1 | I2C_WRITE);
-	i2c_write(AHT2X_INIT_REG);
-	i2c_write(0x08);
-	i2c_write(0x00);
-	i2c_stop();
-	//_delay_ms(10);
-	//while (1) {
-	//	i2c_start(AHTXX_ADDRESS << 1 | I2C_READ);
-	//	if (i2c_readNak() & 0x08) break;
-	//}
-}
-
 uint8_t aht20_get(uint16_t *humid, int16_t *temperature) {
 	uint8_t data[7];
-	/* send measurement command */
+	i2c_init();
+	/* send status command */
 	if (i2c_start(AHTXX_ADDRESS << 1 | I2C_WRITE)) return 1;
+	i2c_write(AHTXX_STATUS_REG);
+	i2c_stop();
+	/* check calibration bit */
+	i2c_start(AHTXX_ADDRESS << 1 | I2C_READ);
+	uint8_t status = i2c_readNak();
+	i2c_stop();
+	if (!(status & 0x08)) {
+		/* Set initialization register */
+		i2c_start(AHTXX_ADDRESS << 1 | I2C_WRITE);
+		i2c_write(AHT2X_INIT_REG);
+		i2c_write(0x08);
+		i2c_write(0x00);
+		i2c_stop();
+		_delay_ms(10);
+	}
+	/* send measurement command */
 	i2c_write(AHTXX_START_MEASUREMENT_REG);
 	i2c_write(0x33);
 	i2c_write(0x00);
 	i2c_stop();
-	/* check busy bit */
-	//while (1) {
-	//	i2c_start(AHTXX_ADDRESS << 1 | I2C_READ);
-	//	if (i2c_readNak() & 0x80) break;
-	//	i2c_stop();
-	//}
 	_delay_ms(80);
 	/* read data from sensor */
 	i2c_start(AHTXX_ADDRESS << 1 | I2C_READ);

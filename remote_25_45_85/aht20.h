@@ -32,7 +32,6 @@ static __inline__ uint8_t _crc8_update(uint8_t __crc, uint8_t __data) {
 	return __crc;
 }
 
-void aht20_init();
 uint8_t aht20_get(uint16_t *humid, int16_t *temperature);
 
 #endif /* AHT20_H_ */
