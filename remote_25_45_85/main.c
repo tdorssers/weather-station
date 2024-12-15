@@ -2,14 +2,14 @@
  * Title   : Remote temperature sensor module
  * Hardware: ATtiny45/85 @ 1 MHz, RFM85 433MHz ASK/OOK transmitter module,
  *           AHT20/AM2320 digital temperature and humidity sensor or DS18B20
- *           digital temperature sensor, 1 tactile button
+ *           digital temperature sensor, 4 DIP switches
  * Created : 12-12-2020 12:56:25
  * Author  : Tim Dorssers
  *
  * PB0 -> AHT20/AM2320 SDA or DS18B20 DQ
  * PB1 -> transmitter data
  * PB2 -> AHT20/AM2320 SCL or N/C
- * PB3 -> tactile button
+ * PB3 -> resistor ladder
  * PB4 -> transmitter Vcc
  */ 
 
@@ -38,7 +38,8 @@ typedef struct {
 } packet_t;
 
 packet_t txData;
-volatile uint8_t id = 0;
+
+const uint8_t lookup[] PROGMEM = {116, 112, 107, 102, 97, 91, 85, 77, 68, 60, 50, 42, 32, 20, 6};
 
 #ifdef DEBUG
 static void dump(char *buffer) {
@@ -78,25 +79,14 @@ static void wdt_off(void) {
 	WDTCR = 0x00;
 }
 
-ISR(PCINT0_vect) {
-	if (bit_is_clear(PINB, PB3)) {
-		_delay_ms(20);
-		if (bit_is_clear(PINB, PB3)) {
-			id++;
-			id &= 0xf;
-		}
-	}
-}
-
 int main(void) {
-	// Enable pull-up and pin change interrupt on PB3
-	PORTB |= _BV(PB3);
-	GIMSK |= _BV(PCIE);
-	PCMSK |= _BV(PCINT3);
+	// Vcc reference, channel ADC3, left adjust result, prescaler /8, enable ADC
+	ADMUX = _BV(ADLAR) | _BV(MUX1) | _BV(MUX0);
+	ADCSRA = _BV(ADPS1) | _BV(ADPS0) | _BV(ADEN);
 	// Enter main loop
 	while (1) {
 		txData.humid = 0xaaaa;
-		uint8_t type = 0;
+		uint8_t type = 0, id;
 		// Read out sensor
 		uint8_t result = ds18b20_read_temperature(&txData.temp);
 		if (result == 1) {
@@ -107,6 +97,11 @@ int main(void) {
 			result = aht20_get(&txData.humid, &txData.temp);
 			type = 2;
 		}
+		// Read ID
+		ADCSRA |= _BV(ADSC);
+		loop_until_bit_is_clear(ADCSRA, ADSC);
+		for (id = 0; id < 15; id++)
+			if (pgm_read_byte(lookup + id) < ADCH) break;
 		txData.unit = type << 6 | result << 4 | id;
 		#ifdef DEBUG
 		if (result == 1)

@@ -40,7 +40,7 @@ Touch screen keyboard to name remote sensors:
 
 ## Remote ATtiny45/85
 
-Remote temperature sensor module with drivers for AHT20, AM2320 and DS18B20 sensor. The tactile button is used to set the unit address. Every 8 seconds a NRZ encoded packet with CRC data is transmitted using a 433MHz ASK/OOK module connected to the USI UART at 1200 baud.
+Remote temperature sensor module with drivers for AHT20, AM2320 and DS18B20 sensor. The DIP switches are used to set the unit address. Every 8 seconds a NRZ encoded packet with CRC data is transmitted using a 433MHz ASK/OOK module connected to the USI UART at 1200 baud.
 
 ### Hardware
 
@@ -48,11 +48,11 @@ Remote temperature sensor module with drivers for AHT20, AM2320 and DS18B20 sens
 * RFM85 433MHz ASK/OOK transmitter module
 * AHT20/AM2320 digital temperature and humidity sensor
 * DS18B20 digital temperature sensor
-* 1 tactile button
+* 4 DIP switches
 
 ### Schematic
 
-AM2320 wiring:
+AHT20/AM2320 wiring:
 
 ![](schematic/remote_25_45_85.png)
 
@@ -78,7 +78,7 @@ Remote temperature sensor module with drivers for AHT20, AM2320 and DS18B20 sens
 
 ### Schematic
 
-AM2320 wiring:
+AHT20/AM2320 wiring:
 
 ![](schematic/remote_2313_4313.png)
 
