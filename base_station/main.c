@@ -10,9 +10,9 @@
  *
  * A BME280 barometric sensor is used to implement a simple Zambretti weather
  * forecasting algorithm by calculating the Pa/h trend. Up to 16 wireless
- * AHT20, AM2320 or DS18B20 sensors transmit NRZ encoded packets with CRC data
- * using a 433MHz ASK/OOK module connected to the hardware UART at 1200 baud.
- * Up to 6 remote sensors are shown on the LCD. Minimum and maximum
+ * DS18B20, AM2320, AHT20 or SHT30 sensors transmit NRZ encoded packets with
+ * CRC data using a 433MHz ASK/OOK module connected to the hardware UART at
+ * 1200 baud. Up to 6 remote sensors are shown on the LCD. Minimum and maximum
  * temperatures and humidity values are stored in 4 six hour periods. A
  * software UART implementation using Timer1 is interfacing with the GPS module
  * at 9600 baud. Libc timekeeping uses the GPS position to determine day and
@@ -56,7 +56,7 @@
 char buffer[26];
 
 typedef enum {OK, NO_RESPONSE, CRC_ERROR} result_t;
-typedef enum {DS18B20, AM2320, AHT20} type_t;
+typedef enum {DS18B20, AM2320, AHT20, SHT30} type_t;
 
 typedef union {
 	struct {
@@ -1058,7 +1058,7 @@ static void init_eeprom(void) {
 int main(void) {
 	uint8_t length = 0xff, prev, c = 0;
 	uint16_t crc = 0;
-	bool gps_valid = false;
+	time_t last = 0;
 	
 	timer0_init();
 	timer2_init();
@@ -1104,8 +1104,7 @@ int main(void) {
 		} else if (action.update_screen) {
 			action.update_screen = false;
 			updateScreen();
-			ili9341_drawRLEBitmap(294,109,(gps_valid) ? gps_icon : no_gps_icon,24,24,fgcolor, bgcolor);
-			gps_valid = false;
+			ili9341_drawRLEBitmap(294,109,(gps_fix) ? gps_icon : no_gps_icon,24,24,fgcolor, bgcolor);
 			ili9341_setCursor(272,225);
 			drawInt(millis - start);
 			ili9341_puts_p(PSTR("ms"));
@@ -1122,8 +1121,9 @@ int main(void) {
 				altitude = gps_altitude / 100;
 				north = gps_latitude > 0;
 				set_position(gps_latitude / 100, gps_longitude / 100);
-				set_system_time(mk_gmtime(&gps_time));
-				gps_valid = true;
+				time_t timestamp = mk_gmtime(&gps_time);
+				if (difftime(timestamp, last) == 1) set_system_time(timestamp);
+				last = timestamp;
 			}
 		}
 		while (uart_available()) {

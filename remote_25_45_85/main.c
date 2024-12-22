@@ -1,8 +1,8 @@
 /*
  * Title   : Remote temperature sensor module
  * Hardware: ATtiny45/85 @ 1 MHz, RFM85 433MHz ASK/OOK transmitter module,
- *           AHT20/AM2320 digital temperature and humidity sensor or DS18B20
- *           digital temperature sensor, 4 DIP switches
+ *           AHT20/AM2320/SHT30 digital temperature and humidity sensor or
+ *           DS18B20 digital temperature sensor, 4 DIP switches
  * Created : 12-12-2020 12:56:25
  * Author  : Tim Dorssers
  *
@@ -28,6 +28,7 @@
 #include "am2320.h"
 #include "ds18b20.h"
 #include "aht20.h"
+#include "sht30.h"
 
 #undef DEBUG
 
@@ -96,6 +97,10 @@ int main(void) {
 		if (result == 1) {
 			result = aht20_get(&txData.humid, &txData.temp);
 			type = 2;
+		}
+		if (result == 1) {
+			result = sht30_readTempHum(&txData.temp, &txData.humid);
+			type = 3;
 		}
 		// Read ID
 		ADCSRA |= _BV(ADSC);

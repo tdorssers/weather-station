@@ -12,12 +12,12 @@
 
 uint8_t checksum = 0, message = 0, field = 0, offset = 0;
 char buffer[15];
-bool valid;
 
 int32_t gps_latitude, gps_longitude, gps_altitude;
 int16_t gps_speed, gps_course, gps_hdop;
 uint8_t gps_numsats;
 struct tm gps_time;
+bool gps_fix;
 
 // convert one hex digit to integer
 static uint8_t parse_hex(char c) {
@@ -71,7 +71,7 @@ static uint32_t parse_degrees() {
 #define GLL 0x40 // Latitude and longitude, with time of position fix and status
 #define RMC 0x60 // Recommended minimum data
 
-// Returns true if new sentence has just passed checksum test and GPS data is valid
+// Returns true if new sentence has just passed checksum test
 static bool parse_term() {
 	// the first term determines the sentence type
 	if (field == 0) {
@@ -81,8 +81,8 @@ static bool parse_term() {
 	}
 	// checksum term
 	if (message == 0xFF) {
-		if ((parse_hex(buffer[0]) << 4) + parse_hex(buffer[1]) != checksum) valid = false;
-		return valid;
+		if ((parse_hex(buffer[0]) << 4) + parse_hex(buffer[1]) != checksum) return false;
+		return true;
 	}
 	if (message == 0) return false;
 	// parse sentence term
@@ -96,10 +96,10 @@ static bool parse_term() {
 			break;
 		//case GLL + 6:
 		case RMC + 2:
-			valid = buffer[0] == 'A';
+			gps_fix = buffer[0] == 'A';
 			break;
 		case GGA + 6:
-			valid = buffer[0] > '0';
+			gps_fix = buffer[0] > '0';
 			break;
 		//case GLL + 1:
 		//case RMC + 3:
@@ -151,7 +151,6 @@ bool gps_decode(char c) {
 	switch (c) {
 		case '$':  // sentence begin
 			checksum = message = field = offset = 0;
-			valid = false;
 			break;
 		case ',':  // term terminators
 			checksum ^= c;

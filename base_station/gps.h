@@ -17,6 +17,7 @@ extern int32_t gps_latitude, gps_longitude, gps_altitude;
 extern int16_t gps_speed, gps_course, gps_hdop;
 extern uint8_t gps_numsats;
 extern struct tm gps_time;
+extern bool gps_fix;
 
 bool gps_decode(char c);
 
