@@ -1,8 +1,8 @@
 /*
  * Title   : Remote temperature sensor module
  * Hardware: ATtiny2313/2313A/4313 @ 1 MHz, RFM85 433MHz ASK/OOK transmitter
- *           module, AHT20/AM2320 digital temperature and humidity sensor or
- *           DS18B20 digital temperature sensor, 4 DIP switches
+ *           module, AHT20/AM2320/SHT30 digital temperature and humidity sensor
+ *           or DS18B20 digital temperature sensor, 4 DIP switches
  * Created: 26-12-2020 13:34:28
  * Author : Tim Dorssers
  *
@@ -17,6 +17,7 @@
  */ 
 
 #define F_CPU 1000000
+#define BAUD 1200
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -24,13 +25,15 @@
 #include <avr/sfr_defs.h>
 #include <avr/sleep.h>
 #include <avr/wdt.h>
-#include <util/delay.h>
+#include <avr/cpufunc.h>
 #include <util/crc16.h>
+#include <util/delay.h>
+#include <util/setbaud.h>
 #include <stdlib.h>
-#include "uart.h"
 #include "am2320.h"
 #include "ds18b20.h"
 #include "aht20.h"
+#include "sht30.h"
 
 #undef DEBUG
 
@@ -40,13 +43,36 @@ typedef struct {
 	int16_t temp;
 } packet_t;
 
+static void uart_init(void) {
+	UCSRB = _BV(TXEN);
+	UCSRC = _BV(UCSZ0) | _BV(UCSZ1); // 8N1
+	UBRRH = UBRRH_VALUE;
+	UBRRL = UBRRL_VALUE;
+}
+
+static void uart_putc(char c) {
+	loop_until_bit_is_set(UCSRA, UDRE);
+	UDR = c;
+}
+
 #ifdef DEBUG
+static void uart_puts(const char *string) {
+	while(*string)
+		uart_putc(*string++);
+}
+
+static void uart_puts_p(const char *string) {
+	char c;
+	while ((c = pgm_read_byte(string++)))
+		uart_putc(c);
+}
+
 void dump_int(const char *progmem_s, int val) {
 	char buffer[10];
 	uart_puts_p(progmem_s);
 	itoa(val, buffer, 10);
 	uart_puts(buffer);
-	uart_puts_P("\r\n");
+	uart_puts_p(PSTR("\r\n"));
 }
 #endif
 
@@ -68,13 +94,15 @@ static void wdt_off(void) {
 
 static uint8_t get_id(void) {
 	PORTB |= (1 << PB0) | (1 << PB1) | (1 << PB2) | (1 << PB3);
+	_NOP();
 	return ~PINB & 0xf;
 }
 
 int main(void) {
 	packet_t txData;
 	
-	uart_init(UART_BAUD_SELECT(1200, F_CPU));
+	uart_init();
+	sei();
 	// Enter main loop
     while (1) {
 		txData.humid = 0xaaaa;
@@ -85,28 +113,32 @@ int main(void) {
 			result = am2320_get(&txData.humid, &txData.temp);
 			type = 1;
 		}
-		#ifndef DEBUG
 		if (result == 1) {
 			result = aht20_get(&txData.humid, &txData.temp);
 			type = 2;
+		}
+		#ifdef __AVR_ATtiny4313__
+		if (result == 1) {
+			result = sht30_readTempHum(&txData.temp, &txData.humid);
+			type = 3;
 		}
 		#endif
 		txData.unit = type << 6 | result << 4 | get_id();
 		#ifdef DEBUG
 		if (result == 1)
-			uart_puts_P("No response\r\n");
+			uart_puts_p(PSTR("No response\r\n"));
 		else if (result == 2)
-			uart_puts_P("CRC error\r\n");
+			uart_puts_p(PSTR("CRC error\r\n"));
 		else {
 			dump_int(PSTR("\r\nid="), get_id());
 			if (type) dump_int(PSTR("humid="), txData.humid);
 			dump_int(PSTR("temp="), txData.temp);
 		}
-		_delay_ms(240);
 		#endif
 		// Turn on transmitter
 		DDRB |= _BV(PB4);
 		PORTB |= _BV(PB4);
+		_delay_ms(20);
 		// Send preamble
 		uart_putc(0x55);
 		uart_putc(0x55);
@@ -120,9 +152,8 @@ int main(void) {
 		// Send CRC
 		uart_putc(crc);
 		uart_putc(crc >> 8);
-		// Wait until transmission is finished
-		_delay_ms(120);
 		// Turn transmitter off
+		_delay_ms(20);
 		PORTB &= ~_BV(PB4);
 		// Enter sleep mode for 8 seconds
 		set_sleep_mode(SLEEP_MODE_PWR_DOWN);

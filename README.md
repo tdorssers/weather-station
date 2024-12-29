@@ -38,13 +38,13 @@ Touch screen keyboard to name remote sensors:
 
 ![](media/base_station_keys.jpg)
 
-## Remote ATtiny45/85
+## Remote ATtiny25/45/85
 
-Remote temperature sensor module with drivers for DS18B20, AM2320, AHT20 and SHT30 sensor. The DIP switches are used to set the unit address. Every 8 seconds a NRZ encoded packet with CRC data is transmitted using a 433MHz ASK/OOK module connected to the USI UART at 1200 baud.
+Remote temperature sensor module with drivers for DS18B20, AM2320, AHT20 and SHT30 sensor. The DIP switches are used to set the unit address. Every 8 seconds a NRZ encoded packet with CRC data is transmitted using a 433MHz ASK/OOK module connected to the USI UART at 1200 baud. Compiling for an ATtiny25 disables the SHT30 driver and requires `-Os`.
 
 ### Hardware
 
-* ATtiny45/85 @ 1 MHz
+* ATtiny25/45/85 @ 1 MHz
 * RFM85 433MHz ASK/OOK transmitter module
 * AHT20/AM2320/SHT30 digital temperature and humidity sensor
 * DS18B20 digital temperature sensor
@@ -66,7 +66,7 @@ DS18B20 wiring:
 
 ## Remote ATtiny2313/2313A/4313
 
-Remote temperature sensor module with drivers for AHT20, AM2320 and DS18B20 sensor. The DIP switches are used to set the unit address. Every 8 seconds a NRZ encoded packet with CRC data is transmitted using a 433MHz ASK/OOK module connected to the hardware USART at 1200 baud.
+Remote temperature sensor module with drivers for DS18B20, AM2320, AHT20 and SHT30 sensor. The DIP switches are used to set the unit address. Every 8 seconds a NRZ encoded packet with CRC data is transmitted using a 433MHz ASK/OOK module connected to the hardware USART at 1200 baud. Compiling for an ATtiny4313 enables the SHT30 driver.
 
 ### Hardware
 
@@ -101,6 +101,6 @@ The firmware has been developed in Atmel Studio 7 using GCC C and can be uploade
 
 `avrdude -p t2313 -c usbasp -U flash:w:remote_2313_4313.hex:i -U lfuse:w:0x7f:m -U hfuse:w:0xdf:m`
 
-### Remote ATtiny45/85
+### Remote ATtiny25/45/85
 
 `avrdude -p t85 -c usbasp -U flash:w:remote_25_45_85.hex:i -U lfuse:w:0x62:m -U hfuse:w:0xdf:m`

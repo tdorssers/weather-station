@@ -113,14 +113,14 @@ typedef struct {
 typedef enum {SCREEN, MENU, CALIBRATE} view_t;
 
 view_t view = SCREEN;
-enum {TAB_CONFIG = 1, TAB_LCD, TAB_GPS, TAB_NAMES};
+enum {TAB_CONFIG = 1, TAB_LCD, TAB_ETC, TAB_NAMES};
 enum {THEME_LIGHT = 1, THEME_DARK, THEME_AUTO};
 enum {DEG_CELSIUS = 1, DEG_FAHRENHEIT};
 enum {PRESSURE_HPA = 1, PRESSURE_MMHG, PRESSURE_INHG, PRESSURE_PSI};
-bool dst = true, old_auto_led, is_day = false, refresh, north;
+bool dst = true, old_auto_led, is_day = false, refresh, north, old_rainbow;
 button_t b_dst = {.value = true}, b_auto_led = {.value = true};
 button_t b_theme = {.value = THEME_AUTO}, b_pressure = {.value = PRESSURE_HPA};
-button_t b_degrees = {.value = DEG_CELSIUS};
+button_t b_degrees = {.value = DEG_CELSIUS}, b_rainbow = {.value = true};
 int8_t tz = 1, new_tz = 1;
 uint8_t old_ocr0b, rotation = 3, old_theme, old_pressure, old_degrees;
 int16_t altitude;
@@ -639,11 +639,11 @@ static void updateScreen(void) {
 	}
 	// show base station sensor readings
 	ili9341_setFont(lcdnums14x24);
-	ili9341_setTextColor(green_red(map(temp/10,l_temp,h_temp,0,63)),bgcolor);
-	//ili9341_setTextColor(ILI9341_RED,bgcolor);
+	uint16_t scale = green_red(map(temp/10,l_temp,h_temp,0,63));
+	ili9341_setTextColor(b_rainbow.value ? scale : ILI9341_RED,bgcolor);
 	drawScaledRight(211,15,84,convertTemp(temp/10));
-	//ili9341_setTextColor(ILI9341_BLUE,bgcolor);
-	ili9341_setTextColor(blue_red(map(humid,l_humid,h_humid,0,63)),bgcolor);
+	scale = blue_red(map(humid,l_humid,h_humid,0,63));
+	ili9341_setTextColor(b_rainbow.value ? scale : ILI9341_BLUE,bgcolor);
 	drawScaledRight(211,40,84,humid);
 	ili9341_setTextColor(fgcolor,bgcolor);
 	drawPressure(211,65,84,pres);
@@ -692,7 +692,6 @@ static void updateScreen(void) {
 			if (remote[i].hist[j].min_temp < remote_day.min_temp) remote_day.min_temp = remote[i].hist[j].min_temp;
 		}
 		// show unit name
-		//ili9341_fillCircle(6,y+22,5,(remote[i].age > 9) ? ILI9341_RED : ILI9341_LIME);
 		ili9341_fillCircle(6,y+22,5,green_red(min(remote[i].age, 63)));
 		ili9341_setFont(Arial_bold_14);
 		ili9341_setCursor(1,y);
@@ -707,7 +706,7 @@ static void updateScreen(void) {
 			// show current temperature
 			ili9341_clearTextArea(29);
 			ili9341_setFont(lcdnums12x16);
-			ili9341_setTextColor(green_red(map(remote[i].temp,l_temp,h_temp,0,63)),bgcolor);
+			if (b_rainbow.value) ili9341_setTextColor(green_red(map(remote[i].temp,l_temp,h_temp,0,63)),bgcolor);
 			drawScaledRight(30,y,60,convertTemp(remote[i].temp));
 			ili9341_setTextColor(fgcolor,bgcolor);
 			drawTempUnit(false);
@@ -735,7 +734,7 @@ static void updateScreen(void) {
 			// show current humidity
 			if (remote[i].unit.type != DS18B20) {
 				ili9341_setFont(lcdnums12x16);
-				ili9341_setTextColor(blue_red(map(remote[i].humid,l_humid,h_humid,0,63)),bgcolor);
+				if (b_rainbow.value) ili9341_setTextColor(blue_red(map(remote[i].humid,l_humid,h_humid,0,63)),bgcolor);
 				drawScaledRight(30,y,60,remote[i].humid);
 				ili9341_setTextColor(fgcolor,bgcolor);
 				ili9341_setFont(Arial_bold_14);
@@ -900,30 +899,37 @@ static void drawPosition(char pos, char neg, int32_t coord) {
 	ili9341_write('"');
 }
 
-// update GPS tab
-static void updateGPS(void) {
+// update etc tab
+static void updateEtc(void) {
 	ili9341_setTextSize(1);
 	ili9341_setCursor(10,37);
-	ili9341_puts_p(PSTR("Altitude "));
-	drawInt(altitude);
-	ili9341_write('m');
-	ili9341_clearTextArea(119);
-	ili9341_setCursor(10,52);
-	drawPosition('N', 'S', gps_latitude);
-	ili9341_clearTextArea(119);
-	ili9341_setCursor(10,67);
-	drawPosition('E', 'W', gps_longitude);
-	ili9341_clearTextArea(119);
-	ili9341_setCursor(10,82);
-	time_t now = mk_gmtime(&gps_time);
-	ctime_r(&now, buffer);
-	ili9341_puts(buffer);
-	ili9341_clearTextArea(192);
-	ili9341_setCursor(10,97);
-	ili9341_puts_p(PSTR("Satellites "));
-	drawInt(gps_numsats);
-	ili9341_clearTextArea(119);
+	ili9341_puts_p(PSTR("Digits"));
+	ili9341_setCursor(10,91);
+	ili9341_puts_p(PSTR("GPS"));
+	if (gps_valid) {
+		ili9341_setCursor(10,108);
+		ili9341_puts_p(PSTR("Altitude "));
+		drawInt(altitude);
+		ili9341_write('m');
+		ili9341_clearTextArea(119);
+		ili9341_setCursor(10,123);
+		drawPosition('N', 'S', gps_latitude);
+		ili9341_clearTextArea(119);
+		ili9341_setCursor(10,138);
+		drawPosition('E', 'W', gps_longitude);
+		ili9341_clearTextArea(119);
+		ili9341_setCursor(10,153);
+		time_t now = mk_gmtime(&gps_time);
+		ctime_r(&now, buffer);
+		ili9341_puts(buffer);
+		ili9341_clearTextArea(192);
+		ili9341_setCursor(10,168);
+		ili9341_puts_p(PSTR("Satellites "));
+		drawInt(gps_numsats);
+		ili9341_clearTextArea(119);
+	}
 	ili9341_setTextSize(2);
+	b_rainbow = handleButton(10,54,PSTR("Rainbow"),0,0,b_rainbow);
 }
 
 // update names tab
@@ -980,16 +986,16 @@ static void updateMenu(void) {
 	ili9341_setTextSize(2);
 	b_tab = handleButton(0,0,PSTR("Config"),0,TAB_CONFIG,b_tab);
 	b_tab = handleButton(96,0,PSTR("LCD"),0,TAB_LCD,b_tab);
-	b_tab = handleButton(160,0,PSTR("GPS"),0,TAB_GPS,b_tab);
-	b_tab = handleButton(224,0,PSTR("Names"),0,TAB_NAMES,b_tab);
+	b_tab = handleButton(160,0,PSTR("Etc"),0,TAB_ETC,b_tab);
+	b_tab = handleButton(214,0,PSTR("Names"),0,TAB_NAMES,b_tab);
 	if (b_tab.value != old_tab) fillTab();
 	if (b_tab.value == TAB_CONFIG) {
 		updateConfig();
 	} else if (b_tab.value == TAB_LCD) {
 		updateLCD();
 		b_calibrate = handleButton(75,162,PSTR("Calibrate"),0,0,b_calibrate);
-	} else if (b_tab.value == TAB_GPS) {
-		updateGPS();
+	} else if (b_tab.value == TAB_ETC) {
+		updateEtc();
 	} else {
 		updateNames();
 	}
@@ -1017,6 +1023,7 @@ static void updateMenu(void) {
 		b_degrees.value = old_degrees;
 		b_pressure.value = old_pressure;
 		b_theme.value = old_theme;
+		b_rainbow.value = old_rainbow;
 		changeMode();
 		drawScreen();
 	}
@@ -1088,6 +1095,7 @@ int main(void) {
 			old_theme = b_theme.value;
 			old_degrees = b_degrees.value;
 			old_pressure = b_pressure.value;
+			old_rainbow = b_rainbow.value;
 			old_ocr0b = OCR0B;
 			if (ts_xMax != ts_xMin)
 				drawMenu();

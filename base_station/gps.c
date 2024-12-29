@@ -8,6 +8,7 @@
 #include <avr/pgmspace.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <string.h>
 #include "gps.h"
 
 uint8_t checksum = 0, message = 0, field = 0, offset = 0;
@@ -17,7 +18,7 @@ int32_t gps_latitude, gps_longitude, gps_altitude;
 int16_t gps_speed, gps_course, gps_hdop;
 uint8_t gps_numsats;
 struct tm gps_time;
-bool gps_fix;
+bool gps_fix, gps_valid;
 
 // convert one hex digit to integer
 static uint8_t parse_hex(char c) {
@@ -73,6 +74,7 @@ static uint32_t parse_degrees() {
 
 // Returns true if new sentence has just passed checksum test
 static bool parse_term() {
+	if (buffer[0] == 0) return false;
 	// the first term determines the sentence type
 	if (field == 0) {
 		if (strcmp_P(buffer, PSTR("GPGGA")) == 0) message = GGA;
@@ -81,8 +83,9 @@ static bool parse_term() {
 	}
 	// checksum term
 	if (message == 0xFF) {
-		if ((parse_hex(buffer[0]) << 4) + parse_hex(buffer[1]) != checksum) return false;
-		return true;
+		gps_valid = true;
+		if ((parse_hex(buffer[0]) << 4) + parse_hex(buffer[1]) != checksum) gps_valid = false;
+		return gps_valid;
 	}
 	if (message == 0) return false;
 	// parse sentence term

@@ -10,6 +10,7 @@
 #include <util/delay.h>
 #include "aht20.h"
 #include "i2cmaster.h"
+#include "crc8.h"
 
 uint8_t aht20_get(uint16_t *humid, int16_t *temperature) {
 	uint8_t data[7];
@@ -52,7 +53,7 @@ uint8_t aht20_get(uint16_t *humid, int16_t *temperature) {
 	hum = (hum * 250) >> 18;
 	*humid = (uint16_t)hum;
 	uint32_t temp = (((uint32_t)data[3] & 0x0F) << 16) | ((uint16_t)data[4] << 8) | data[5];
-	temp = ((temp * 250) >> 17);
+	temp = (temp * 250) >> 17;
 	*temperature = (int16_t)temp - 500;
 	return 0;
 }
