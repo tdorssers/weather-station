@@ -193,6 +193,7 @@ const char steady[] PROGMEM = {
 
 #define map(x,in_min,in_max,out_min,out_max) (((x)-(in_min))*((out_max)-(out_min))/((in_max)-(in_min))+(out_min))
 #define min(a,b) ((a)<(b)?(a):(b))
+#define constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
 
 // Time based event triggers
 ISR(TIMER2_COMPA_vect) {
@@ -700,13 +701,14 @@ static void updateScreen(void) {
 			// show status
 			ili9341_puts_p((remote[i].unit.result == NO_RESPONSE) ? PSTR(" No response") : PSTR(" CRC error"));
 			ili9341_clearTextArea(209);
-			ili9341_fillrect(12,y+15,197,14,bgcolor);
+			ili9341_fillrect(12,y+15,197,16,bgcolor);
 			y += 17;
 		} else {
 			// show current temperature
 			ili9341_clearTextArea(29);
 			ili9341_setFont(lcdnums12x16);
-			if (b_rainbow.value) ili9341_setTextColor(green_red(map(remote[i].temp,l_temp,h_temp,0,63)),bgcolor);
+			scale = green_red(map(remote[i].temp,l_temp,h_temp,0,63));
+			ili9341_setTextColor(b_rainbow.value ? scale : ILI9341_RED,bgcolor);
 			drawScaledRight(30,y,60,convertTemp(remote[i].temp));
 			ili9341_setTextColor(fgcolor,bgcolor);
 			drawTempUnit(false);
@@ -734,7 +736,8 @@ static void updateScreen(void) {
 			// show current humidity
 			if (remote[i].unit.type != DS18B20) {
 				ili9341_setFont(lcdnums12x16);
-				if (b_rainbow.value) ili9341_setTextColor(blue_red(map(remote[i].humid,l_humid,h_humid,0,63)),bgcolor);
+				scale = blue_red(map(remote[i].humid,l_humid,h_humid,0,63));
+				ili9341_setTextColor(b_rainbow.value ? scale : ILI9341_BLUE,bgcolor);
 				drawScaledRight(30,y,60,remote[i].humid);
 				ili9341_setTextColor(fgcolor,bgcolor);
 				ili9341_setFont(Arial_bold_14);
@@ -1154,8 +1157,9 @@ int main(void) {
 					remote[rxData.unit.id].enabled = true;
 					remote[rxData.unit.id].age = 0;
 					remote[rxData.unit.id].unit = rxData.unit;
-					remote[rxData.unit.id].temp = rxData.temp;
-					remote[rxData.unit.id].humid = (rxData.humid > 999) ? 999 : rxData.humid;
+					remote[rxData.unit.id].temp = constrain(rxData.temp, -400, 1250);
+					//remote[rxData.unit.id].humid = (rxData.humid > 999) ? 999 : rxData.humid;
+					remote[rxData.unit.id].humid = min(rxData.humid, 999);
 				}
 			}
 		}
